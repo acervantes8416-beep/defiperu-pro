@@ -1,8 +1,8 @@
 "use client";
 import { useStore } from "@/store";
 import {
-  LayoutDashboard, BarChart3, Wallet, FlaskConical, Signal,
-  Users, Settings, ChevronLeft, ChevronRight,
+  LayoutDashboard, Signal, Wallet, BarChart3,
+  LineChart, Settings, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -12,8 +12,8 @@ const nav = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Panel Principal" },
   { href: "/dashboard/signals", icon: Signal, label: "Señales" },
   { href: "/dashboard/portfolio", icon: Wallet, label: "Portfolio" },
-  { href: "/dashboard/backtest", icon: FlaskConical, label: "Backtesting" },
-  { href: "/dashboard/copy-trading", icon: Users, label: "Copy Trading" },
+  { href: "/dashboard/rendimientos", icon: BarChart3, label: "Rendimientos" },
+  { href: "/dashboard/simulacion", icon: LineChart, label: "Simulación" },
   { href: "/dashboard/settings", icon: Settings, label: "Configuración" },
 ];
 
@@ -28,7 +28,6 @@ export default function Sidebar() {
         sidebarOpen ? "w-64" : "w-16"
       )}
     >
-      {/* Logo */}
       <div className="h-16 flex items-center px-4 border-b border-gray-800">
         {sidebarOpen && (
           <span className="text-lg font-bold bg-gradient-to-r from-accent-green to-accent-blue bg-clip-text text-transparent">
@@ -40,7 +39,6 @@ export default function Sidebar() {
         </button>
       </div>
 
-      {/* Modo */}
       {sidebarOpen && (
         <div className="px-4 py-2 border-b border-gray-800">
           <span className="text-xs text-accent-green bg-accent-green/10 border border-accent-green/20 px-2 py-0.5 rounded-full">
@@ -49,7 +47,6 @@ export default function Sidebar() {
         </div>
       )}
 
-      {/* Navegación */}
       <nav className="flex-1 py-4 space-y-1 px-2">
         {nav.map((item) => {
           const active = pathname === item.href;
@@ -71,10 +68,9 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Footer */}
       {sidebarOpen && (
         <div className="p-4 border-t border-gray-800">
-          <div className="text-xs text-text-muted">v1.1.0 — Trading Spot Automatizado</div>
+          <div className="text-xs text-text-muted">v2.0.0 — Trading Spot Automatizado</div>
         </div>
       )}
     </aside>

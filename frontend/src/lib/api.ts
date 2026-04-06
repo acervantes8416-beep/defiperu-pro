@@ -34,6 +34,14 @@ export const api = {
   getOHLCV: (symbol: string, timeframe = "1h", limit = 200) =>
     fetchAPI(`/market/ohlcv/${symbol}?timeframe=${timeframe}&limit=${limit}`),
 
+  // Market Global
+  getFearGreed: () => fetchAPI("/market-global/fear-greed"),
+  getGlobalData: () => fetchAPI("/market-global/global"),
+  getMarketPhase: () => fetchAPI("/market-global/market-phase"),
+  getTop100: (page = 1) => fetchAPI(`/market-global/top100?page=${page}`),
+  getHistorical: (coinId: string, days = 30) => fetchAPI(`/market-global/historical/${coinId}?days=${days}`),
+  getSimulation: (profile: string, days = 30) => fetchAPI(`/market-global/simulation/${profile}?days=${days}`),
+
   // Signals
   analyze: (symbol: string, timeframe = "1h") =>
     fetchAPI(`/signals/analyze/${symbol}?timeframe=${timeframe}`),
@@ -43,22 +51,14 @@ export const api = {
 
   // Portfolio
   getPortfolio: () => fetchAPI("/portfolio/overview"),
+  getProfiles: () => fetchAPI("/portfolio/profiles"),
+  setProfile: (profile: string) =>
+    fetchAPI("/portfolio/profile", { method: "POST", body: JSON.stringify({ profile }) }),
+  getRebalance: (profile: string, value = 10000) =>
+    fetchAPI(`/portfolio/rebalance?profile=${profile}&portfolio_value=${value}`),
   setMode: (mode: string) =>
     fetchAPI("/portfolio/mode", { method: "POST", body: JSON.stringify({ mode }) }),
   getPendingTrades: () => fetchAPI("/portfolio/pending-trades"),
   approveTrade: (symbol: string) =>
     fetchAPI("/portfolio/approve-trade", { method: "POST", body: JSON.stringify({ symbol }) }),
-
-  // Backtest
-  runBacktest: (symbol: string, timeframe: string, capital: number, confidence: number) =>
-    fetchAPI("/backtest/run", {
-      method: "POST",
-      body: JSON.stringify({ symbol, timeframe, initial_capital: capital, min_confidence: confidence }),
-    }),
-
-  // Social
-  getLeaderboard: () => fetchAPI("/social/leaderboard"),
-  getStrategyRanking: () => fetchAPI("/social/strategy-ranking"),
-  startCopyTrading: (leaderId: string) =>
-    fetchAPI("/social/copy", { method: "POST", body: JSON.stringify({ leader_id: leaderId }) }),
 };

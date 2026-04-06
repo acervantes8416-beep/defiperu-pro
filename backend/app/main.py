@@ -1,6 +1,6 @@
 """
 DeFiPerú Pro — Backend API
-Mini hedge fund automático para criptomonedas.
+Plataforma automatizada de trading cripto SPOT.
 """
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -9,7 +9,8 @@ from loguru import logger
 
 from app.core.config import get_settings
 from app.services.data.market_data import market_data
-from app.api.routes import auth, market, signals, portfolio, backtest, copy_trading
+from app.api.routes import auth, market, signals, portfolio, backtest
+from app.api.routes import market_global
 from app.api.websockets import stream
 
 settings = get_settings()
@@ -17,8 +18,7 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Inicialización y limpieza de la aplicación."""
-    logger.info(f"🚀 Iniciando {settings.app_name}...")
+    logger.info(f"Iniciando {settings.app_name}...")
     await market_data.initialize()
     logger.info("MarketData engine ready")
     yield
@@ -28,12 +28,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    description="Plataforma automatizada de trading cripto — análisis, señales y ejecución",
-    version="1.0.0",
+    description="Plataforma automatizada de trading cripto SPOT",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
-# CORS para frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:3001"],
@@ -42,26 +41,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Registrar routers REST
+# REST routes
 app.include_router(auth.router, prefix=settings.api_prefix)
 app.include_router(market.router, prefix=settings.api_prefix)
+app.include_router(market_global.router, prefix=settings.api_prefix)
 app.include_router(signals.router, prefix=settings.api_prefix)
 app.include_router(portfolio.router, prefix=settings.api_prefix)
 app.include_router(backtest.router, prefix=settings.api_prefix)
-app.include_router(copy_trading.router, prefix=settings.api_prefix)
 
-# WebSocket routes
+# WebSocket
 app.include_router(stream.router)
 
 
 @app.get("/")
 async def root():
-    return {
-        "app": settings.app_name,
-        "version": "1.0.0",
-        "status": "operational",
-        "docs": "/docs",
-    }
+    return {"app": settings.app_name, "version": "2.0.0", "status": "operational", "docs": "/docs"}
 
 
 @app.get("/health")

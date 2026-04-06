@@ -2,6 +2,8 @@
 import { useStore } from "@/store";
 import type { RiskProfileType, RebalanceOrder } from "@/types";
 import { ArrowUpCircle, ArrowDownCircle, MinusCircle, DollarSign } from "lucide-react";
+import { useAutoRefresh } from "@/hooks/useAutoRefresh";
+import CountdownBadge from "@/components/common/CountdownBadge";
 import clsx from "clsx";
 
 // ── Datos demo por perfil ──────────────────────────────────
@@ -56,6 +58,8 @@ const categoryColors: Record<string, string> = {
 
 export default function AllocationPanel() {
   const { riskProfile } = useStore();
+  // Auto-refresh cada 60s (en producción: fetch del backend)
+  const { countdown, loading, refresh } = useAutoRefresh(async () => profileData[riskProfile], 60);
   const data = profileData[riskProfile];
   const totalComprar = data.holdings.filter((h) => h.action === "comprar").reduce((s, h) => s + h.delta_usd, 0);
   const totalVender = data.holdings.filter((h) => h.action === "vender").reduce((s, h) => s + Math.abs(h.delta_usd), 0);
@@ -64,7 +68,8 @@ export default function AllocationPanel() {
     <div className="bg-bg-card border border-gray-800 rounded-xl overflow-hidden">
       <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
         <h3 className="text-white font-semibold">Allocación Actual vs Objetivo</h3>
-        <div className="flex items-center gap-3 text-xs">
+        <div className="flex items-center gap-4 text-xs">
+          <CountdownBadge countdown={countdown} loading={loading} onRefresh={refresh} />
           {totalComprar > 0 && (
             <span className="text-accent-green flex items-center gap-1">
               <ArrowUpCircle size={12} /> Comprar ${totalComprar.toLocaleString()}
