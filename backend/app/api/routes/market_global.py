@@ -214,12 +214,8 @@ async def get_portfolio_simulation(
     cash_pct = get_cash_target_pct(risk_profile)
 
     # Mapeo de símbolos a IDs de CoinGecko
-    symbol_to_id = {
-        "BTC/USDT": "bitcoin", "ETH/USDT": "ethereum", "SOL/USDT": "solana",
-        "BNB/USDT": "binancecoin", "AVAX/USDT": "avalanche-2",
-        "LINK/USDT": "chainlink", "DOT/USDT": "polkadot",
-        "ADA/USDT": "cardano", "XRP/USDT": "ripple",
-    }
+    from app.services.portfolio.risk_profiles import SYMBOL_TO_COINGECKO
+    symbol_to_id = SYMBOL_TO_COINGECKO
 
     # Obtener precios históricos para cada activo del perfil
     price_data = {}
@@ -296,3 +292,84 @@ async def get_portfolio_simulation(
         "max_drawdown_pct": round(max_dd, 2),
         "evolution": evolution,
     }
+
+
+@router.get("/narratives")
+async def get_narratives():
+    """
+    Top 10 narrativas/categorías del mercado cripto desde CoinGecko.
+    Incluye rendimiento, fuerza, tokens principales y señales.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(f"{COINGECKO_BASE}/coins/categories", params={
+                "order": "market_cap_change_24h_desc",
+            })
+            categories = resp.json()
+
+        results = []
+        alerts = []
+        for cat in categories[:10]:
+            name = cat.get("name", "")
+            change_24h = cat.get("market_cap_change_24h") or 0
+            volume = cat.get("volume_24h") or 0
+            market_cap = cat.get("market_cap") or 0
+
+            # Fuerza de la narrativa
+            if abs(change_24h) > 10:
+                strength = "FUERTE"
+            elif abs(change_24h) > 5:
+                strength = "MODERADA"
+            else:
+                strength = "DÉBIL"
+
+            # Señal
+            if change_24h > 5:
+                signal = "ACUMULAR"
+            elif change_24h < -5:
+                signal = "EVITAR"
+            else:
+                signal = "NEUTRAL"
+
+            # Alerta si sube más de 15%
+            if change_24h > 15:
+                alerts.append({
+                    "category": name,
+                    "change_24h": round(change_24h, 2),
+                    "message": f"{name} sube +{change_24h:.1f}% en 24h — narrativa muy activa",
+                })
+
+            # Top coins de la categoría
+            top_coins = []
+            for coin in (cat.get("top_3_coins") or [])[:5]:
+                top_coins.append(coin)
+
+            results.append({
+                "name": name,
+                "change_24h": round(change_24h, 2),
+                "market_cap": market_cap,
+                "volume_24h": volume,
+                "strength": strength,
+                "signal": signal,
+                "top_coins_images": top_coins,
+            })
+
+        # Narrativa dominante (mayor cambio positivo)
+        dominant = results[0] if results else None
+
+        # Rotación de capital: hacia dónde fluye
+        gaining = [r for r in results if r["change_24h"] > 2]
+        losing = [r for r in results if r["change_24h"] < -2]
+
+        return {
+            "narratives": results,
+            "dominant": dominant,
+            "alerts": alerts,
+            "capital_rotation": {
+                "flowing_into": [r["name"] for r in gaining[:3]],
+                "flowing_out": [r["name"] for r in losing[:3]],
+            },
+        }
+    except Exception as e:
+        logger.warning(f"Narratives API error: {e}")
+        return {"narratives": [], "dominant": None, "alerts": [], "capital_rotation": {}, "error": str(e)}

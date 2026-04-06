@@ -1,7 +1,7 @@
 "use client";
 import { useStore } from "@/store";
 import {
-  LayoutDashboard, Signal, Wallet, BarChart3,
+  LayoutDashboard, Signal, Wallet, Layers, BarChart3,
   LineChart, Settings, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
@@ -12,6 +12,7 @@ const nav = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Panel Principal" },
   { href: "/dashboard/signals", icon: Signal, label: "Señales" },
   { href: "/dashboard/portfolio", icon: Wallet, label: "Portfolio" },
+  { href: "/dashboard/narrativas", icon: Layers, label: "Narrativas" },
   { href: "/dashboard/rendimientos", icon: BarChart3, label: "Rendimientos" },
   { href: "/dashboard/simulacion", icon: LineChart, label: "Simulación" },
   { href: "/dashboard/settings", icon: Settings, label: "Configuración" },
@@ -70,7 +71,7 @@ export default function Sidebar() {
 
       {sidebarOpen && (
         <div className="p-4 border-t border-gray-800">
-          <div className="text-xs text-text-muted">v2.0.0 — Trading Spot Automatizado</div>
+          <div className="text-xs text-text-muted">v3.0.0 — Trading Spot Automatizado</div>
         </div>
       )}
     </aside>

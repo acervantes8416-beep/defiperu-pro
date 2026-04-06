@@ -39,6 +39,7 @@ export const api = {
   getGlobalData: () => fetchAPI("/market-global/global"),
   getMarketPhase: () => fetchAPI("/market-global/market-phase"),
   getTop100: (page = 1) => fetchAPI(`/market-global/top100?page=${page}`),
+  getNarratives: () => fetchAPI("/market-global/narratives"),
   getHistorical: (coinId: string, days = 30) => fetchAPI(`/market-global/historical/${coinId}?days=${days}`),
   getSimulation: (profile: string, days = 30) => fetchAPI(`/market-global/simulation/${profile}?days=${days}`),
 

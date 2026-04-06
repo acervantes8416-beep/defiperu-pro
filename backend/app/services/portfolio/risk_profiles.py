@@ -15,25 +15,21 @@ class RiskProfileType(str, Enum):
 
 @dataclass
 class AssetAllocation:
-    """Allocación objetivo para un activo."""
     symbol: str
-    target_pct: float       # % objetivo del portfolio (0-100)
-    category: str           # "major", "large_cap", "alt", "stablecoin"
+    target_pct: float
+    category: str
 
 
 @dataclass
 class RiskProfile:
-    """Perfil de riesgo completo."""
     name: str
     type: RiskProfileType
     description: str
-    max_drawdown_pct: float          # Drawdown máximo permitido (%)
-    max_risk_per_trade_pct: float    # Riesgo máximo por trade (%)
-    rebalance_threshold_pct: float   # Umbral para disparar rebalanceo (desviación %)
+    max_drawdown_pct: float
+    max_risk_per_trade_pct: float
+    rebalance_threshold_pct: float
     allocations: list[AssetAllocation] = field(default_factory=list)
 
-
-# ── Definición de los 3 perfiles ──────────────────────────────
 
 RISK_PROFILES: dict[RiskProfileType, RiskProfile] = {
     RiskProfileType.CONSERVADOR: RiskProfile(
@@ -46,13 +42,12 @@ RISK_PROFILES: dict[RiskProfileType, RiskProfile] = {
         allocations=[
             AssetAllocation(symbol="BTC/USDT", target_pct=50.0, category="major"),
             AssetAllocation(symbol="ETH/USDT", target_pct=30.0, category="major"),
-            # 20% en USDT = se mantiene como cash (no se compra nada)
         ],
     ),
     RiskProfileType.MODERADO: RiskProfile(
         name="Moderado",
         type=RiskProfileType.MODERADO,
-        description="Balance riesgo/retorno. Diversificación entre majors y large caps con reserva en USDT.",
+        description="Balance riesgo/retorno. Diversificación entre majors, large caps y DeFi con reserva mínima.",
         max_drawdown_pct=20.0,
         max_risk_per_trade_pct=2.0,
         rebalance_threshold_pct=5.0,
@@ -61,27 +56,41 @@ RISK_PROFILES: dict[RiskProfileType, RiskProfile] = {
             AssetAllocation(symbol="ETH/USDT", target_pct=25.0, category="major"),
             AssetAllocation(symbol="SOL/USDT", target_pct=20.0, category="large_cap"),
             AssetAllocation(symbol="BNB/USDT", target_pct=10.0, category="large_cap"),
-            # 10% en USDT = cash
+            AssetAllocation(symbol="LINK/USDT", target_pct=5.0, category="defi"),
         ],
     ),
     RiskProfileType.AGRESIVO: RiskProfile(
         name="Agresivo",
         type=RiskProfileType.AGRESIVO,
-        description="Máximo rendimiento. Exposición amplia incluyendo altcoins. Mayor volatilidad esperada.",
+        description="Máximo rendimiento. Exposición a IA (TAO), DeFi y altcoins de alto potencial.",
         max_drawdown_pct=35.0,
         max_risk_per_trade_pct=3.0,
         rebalance_threshold_pct=7.0,
         allocations=[
             AssetAllocation(symbol="BTC/USDT", target_pct=25.0, category="major"),
             AssetAllocation(symbol="ETH/USDT", target_pct=20.0, category="major"),
-            AssetAllocation(symbol="SOL/USDT", target_pct=20.0, category="large_cap"),
-            AssetAllocation(symbol="AVAX/USDT", target_pct=8.0, category="alt"),
-            AssetAllocation(symbol="LINK/USDT", target_pct=7.0, category="alt"),
-            AssetAllocation(symbol="DOT/USDT", target_pct=5.0, category="alt"),
+            AssetAllocation(symbol="SOL/USDT", target_pct=15.0, category="large_cap"),
+            AssetAllocation(symbol="TAO/USDT", target_pct=15.0, category="ai"),
+            AssetAllocation(symbol="LINK/USDT", target_pct=5.0, category="defi"),
+            AssetAllocation(symbol="AVAX/USDT", target_pct=5.0, category="alt"),
             AssetAllocation(symbol="ADA/USDT", target_pct=5.0, category="alt"),
-            # 10% en USDT = cash
         ],
     ),
+}
+
+
+# Mapeo de símbolos a IDs de CoinGecko
+SYMBOL_TO_COINGECKO: dict[str, str] = {
+    "BTC/USDT": "bitcoin",
+    "ETH/USDT": "ethereum",
+    "SOL/USDT": "solana",
+    "BNB/USDT": "binancecoin",
+    "LINK/USDT": "chainlink",
+    "TAO/USDT": "bittensor",
+    "AVAX/USDT": "avalanche-2",
+    "ADA/USDT": "cardano",
+    "DOT/USDT": "polkadot",
+    "XRP/USDT": "ripple",
 }
 
 
@@ -90,7 +99,6 @@ def get_profile(profile_type: RiskProfileType) -> RiskProfile:
 
 
 def get_cash_target_pct(profile: RiskProfile) -> float:
-    """Calcula el % de USDT (cash) del perfil = 100 - suma de allocaciones."""
     allocated = sum(a.target_pct for a in profile.allocations)
     return max(0.0, 100.0 - allocated)
 
@@ -98,15 +106,9 @@ def get_cash_target_pct(profile: RiskProfile) -> float:
 def compute_rebalance_orders(
     profile: RiskProfile,
     portfolio_value_usd: float,
-    current_holdings: dict[str, float],  # symbol -> valor actual en USD
-    current_prices: dict[str, float],    # symbol -> precio actual en USD
+    current_holdings: dict[str, float],
+    current_prices: dict[str, float],
 ) -> list[dict]:
-    """
-    Calcula las órdenes necesarias para rebalancear hacia el perfil target.
-    Retorna lista de acciones con montos exactos en USD.
-
-    Cada orden es SPOT: comprar o vender el activo subyacente.
-    """
     orders = []
     cash_target_pct = get_cash_target_pct(profile)
 
@@ -117,9 +119,8 @@ def compute_rebalance_orders(
         price = current_prices.get(symbol, 0.0)
 
         delta_usd = target_value - current_value
-        delta_pct = (alloc.target_pct) - (current_value / portfolio_value_usd * 100 if portfolio_value_usd > 0 else 0)
+        delta_pct = alloc.target_pct - (current_value / portfolio_value_usd * 100 if portfolio_value_usd > 0 else 0)
 
-        # Solo generar orden si la desviación supera el threshold
         if abs(delta_pct) < profile.rebalance_threshold_pct and abs(delta_usd) < 10:
             action = "mantener"
         elif delta_usd > 0:
@@ -132,7 +133,7 @@ def compute_rebalance_orders(
         orders.append({
             "symbol": symbol,
             "category": alloc.category,
-            "action": action,  # "comprar", "vender", "mantener"
+            "action": action,
             "target_pct": alloc.target_pct,
             "current_pct": round(current_value / portfolio_value_usd * 100, 2) if portfolio_value_usd > 0 else 0,
             "delta_pct": round(delta_pct, 2),
@@ -143,7 +144,6 @@ def compute_rebalance_orders(
             "price": price,
         })
 
-    # Agregar la posición de USDT (cash)
     total_invested = sum(current_holdings.get(a.symbol, 0) for a in profile.allocations)
     current_cash = portfolio_value_usd - total_invested
     target_cash = portfolio_value_usd * (cash_target_pct / 100)

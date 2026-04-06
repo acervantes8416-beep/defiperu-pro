@@ -93,15 +93,16 @@ export default function PortfolioPage() {
             <ActionItem action="comprar" symbol="ETH" amount={500} price={3420} qty="0.14620" />
             <ActionItem action="comprar" symbol="SOL" amount={1500} price={185.40} qty="8.09061" />
             <ActionItem action="comprar" symbol="BNB" amount={1000} price={612} qty="1.63400" />
-            <ActionItem action="reservar" symbol="USDT" amount={1000} note="Mantener como reserva (10%)" />
+            <ActionItem action="comprar" symbol="LINK" amount={500} price={18.50} qty="27.03" />
+            <ActionItem action="reservar" symbol="USDT" amount={500} note="Mantener como reserva (5%)" />
           </div>
         )}
         {riskProfile === "agresivo" && (
           <div className="space-y-2">
-            <ActionItem action="comprar" symbol="SOL" amount={1500} price={185.40} qty="8.09061" />
-            <ActionItem action="comprar" symbol="AVAX" amount={800} price={38.70} qty="20.67180" />
-            <ActionItem action="comprar" symbol="LINK" amount={700} price={18.50} qty="37.83784" />
-            <ActionItem action="comprar" symbol="DOT" amount={500} price={7.80} qty="64.10256" />
+            <ActionItem action="comprar" symbol="SOL" amount={1000} price={185.40} qty="5.394" />
+            <ActionItem action="comprar" symbol="TAO" amount={1500} price={400} qty="3.75" note="IA/Bittensor — 15%" />
+            <ActionItem action="comprar" symbol="LINK" amount={500} price={18.50} qty="27.03" />
+            <ActionItem action="comprar" symbol="AVAX" amount={500} price={38.70} qty="12.92" />
             <ActionItem action="comprar" symbol="ADA" amount={500} price={0.72} qty="694.44" />
             <ActionItem action="vender" symbol="BTC" amount={500} price={98450} qty="0.00508" note="Reducir BTC del 30% al 25%" />
             <ActionItem action="reservar" symbol="USDT" amount={1000} note="Mantener como reserva (10%)" />

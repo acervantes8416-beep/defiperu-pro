@@ -24,7 +24,8 @@ const profileData: Record<RiskProfileType, { holdings: RebalanceOrder[]; totalVa
       { symbol: "ETH/USDT", category: "major", action: "comprar", target_pct: 25, current_pct: 20, delta_pct: 5, target_value_usd: 2500, current_value_usd: 2000, delta_usd: 500, quantity: 0.1462, price: 3420 },
       { symbol: "SOL/USDT", category: "large_cap", action: "comprar", target_pct: 20, current_pct: 5, delta_pct: 15, target_value_usd: 2000, current_value_usd: 500, delta_usd: 1500, quantity: 8.0906, price: 185.4 },
       { symbol: "BNB/USDT", category: "large_cap", action: "comprar", target_pct: 10, current_pct: 0, delta_pct: 10, target_value_usd: 1000, current_value_usd: 0, delta_usd: 1000, quantity: 1.634, price: 612 },
-      { symbol: "USDT", category: "stablecoin", action: "invertir", target_pct: 10, current_pct: 45, delta_pct: -35, target_value_usd: 1000, current_value_usd: 4500, delta_usd: -3500, quantity: 0, price: 1 },
+      { symbol: "LINK/USDT", category: "defi", action: "comprar", target_pct: 5, current_pct: 0, delta_pct: 5, target_value_usd: 500, current_value_usd: 0, delta_usd: 500, quantity: 27.03, price: 18.5 },
+      { symbol: "USDT", category: "stablecoin", action: "invertir", target_pct: 5, current_pct: 45, delta_pct: -40, target_value_usd: 500, current_value_usd: 4500, delta_usd: -4000, quantity: 0, price: 1 },
     ],
   },
   agresivo: {
@@ -32,10 +33,10 @@ const profileData: Record<RiskProfileType, { holdings: RebalanceOrder[]; totalVa
     holdings: [
       { symbol: "BTC/USDT", category: "major", action: "mantener", target_pct: 25, current_pct: 30, delta_pct: -5, target_value_usd: 2500, current_value_usd: 3000, delta_usd: -500, quantity: 0.00508, price: 98450 },
       { symbol: "ETH/USDT", category: "major", action: "mantener", target_pct: 20, current_pct: 20, delta_pct: 0, target_value_usd: 2000, current_value_usd: 2000, delta_usd: 0, quantity: 0, price: 3420 },
-      { symbol: "SOL/USDT", category: "large_cap", action: "comprar", target_pct: 20, current_pct: 5, delta_pct: 15, target_value_usd: 2000, current_value_usd: 500, delta_usd: 1500, quantity: 8.0906, price: 185.4 },
-      { symbol: "AVAX/USDT", category: "alt", action: "comprar", target_pct: 8, current_pct: 0, delta_pct: 8, target_value_usd: 800, current_value_usd: 0, delta_usd: 800, quantity: 20.67, price: 38.7 },
-      { symbol: "LINK/USDT", category: "alt", action: "comprar", target_pct: 7, current_pct: 0, delta_pct: 7, target_value_usd: 700, current_value_usd: 0, delta_usd: 700, quantity: 37.84, price: 18.5 },
-      { symbol: "DOT/USDT", category: "alt", action: "comprar", target_pct: 5, current_pct: 0, delta_pct: 5, target_value_usd: 500, current_value_usd: 0, delta_usd: 500, quantity: 64.10, price: 7.8 },
+      { symbol: "SOL/USDT", category: "large_cap", action: "comprar", target_pct: 15, current_pct: 5, delta_pct: 10, target_value_usd: 1500, current_value_usd: 500, delta_usd: 1000, quantity: 5.394, price: 185.4 },
+      { symbol: "TAO/USDT", category: "ai", action: "comprar", target_pct: 15, current_pct: 0, delta_pct: 15, target_value_usd: 1500, current_value_usd: 0, delta_usd: 1500, quantity: 3.75, price: 400 },
+      { symbol: "LINK/USDT", category: "defi", action: "comprar", target_pct: 5, current_pct: 0, delta_pct: 5, target_value_usd: 500, current_value_usd: 0, delta_usd: 500, quantity: 27.03, price: 18.5 },
+      { symbol: "AVAX/USDT", category: "alt", action: "comprar", target_pct: 5, current_pct: 0, delta_pct: 5, target_value_usd: 500, current_value_usd: 0, delta_usd: 500, quantity: 12.92, price: 38.7 },
       { symbol: "ADA/USDT", category: "alt", action: "comprar", target_pct: 5, current_pct: 0, delta_pct: 5, target_value_usd: 500, current_value_usd: 0, delta_usd: 500, quantity: 694.44, price: 0.72 },
       { symbol: "USDT", category: "stablecoin", action: "invertir", target_pct: 10, current_pct: 45, delta_pct: -35, target_value_usd: 1000, current_value_usd: 4500, delta_usd: -3500, quantity: 0, price: 1 },
     ],
@@ -46,6 +47,8 @@ const categoryLabels: Record<string, string> = {
   major: "Principal",
   large_cap: "Gran Cap.",
   alt: "Altcoin",
+  defi: "DeFi",
+  ai: "IA",
   stablecoin: "Stablecoin",
 };
 
@@ -53,6 +56,8 @@ const categoryColors: Record<string, string> = {
   major: "bg-accent-blue",
   large_cap: "bg-accent-green",
   alt: "bg-accent-purple",
+  defi: "bg-blue-400",
+  ai: "bg-pink-400",
   stablecoin: "bg-accent-yellow",
 };
 

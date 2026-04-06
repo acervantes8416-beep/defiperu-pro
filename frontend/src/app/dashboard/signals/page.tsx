@@ -2,6 +2,7 @@
 import { useState } from "react";
 import SignalBadge from "@/components/dashboard/SignalBadge";
 import SignalsTable from "@/components/dashboard/SignalsTable";
+import SupportResistancePanel from "@/components/dashboard/SupportResistancePanel";
 import { useStore } from "@/store";
 import PriceChart from "@/components/charts/PriceChart";
 
@@ -9,31 +10,34 @@ const demoAnalysis = [
   {
     symbol: "BTC/USDT", signal: "BUY" as const, metaScore: 62.4, confidence: 78,
     entry: 98450, sl: 96200, tp: 103500, rr: 2.24, position: 5.2,
-    reason: "Alineación EMA alcista perfecta + MACD bullish + volumen 1.8x promedio",
+    reason: "4/5 criterios: cerca de soporte, RSI 42, MACD alcista, volumen 1.8x",
+    criteriaCount: 4,
     strategies: [
-      { name: "Trend Following", signal: "BUY", confidence: 82, reasons: ["EMA20 > EMA50 > EMA200", "Histograma MACD creciente", "Volumen 1.8x promedio"] },
-      { name: "Mean Reversion", signal: "BUY", confidence: 55, reasons: ["RSI en 42, recuperándose desde 35", "Precio cerca de Bollinger media"] },
-      { name: "Breakout", signal: "BUY", confidence: 68, reasons: ["Precio sobre Ichimoku Cloud", "Resistencia en 99000 testeada 3 veces"] },
+      { name: "Trend Following", signal: "BUY", confidence: 82, reasons: ["EMA20 > EMA50 > EMA200", "Histograma MACD creciente"] },
+      { name: "Mean Reversion", signal: "BUY", confidence: 55, reasons: ["RSI en 42, recuperándose desde 35"] },
+      { name: "Breakout", signal: "BUY", confidence: 68, reasons: ["Precio sobre Ichimoku Cloud"] },
     ],
   },
   {
     symbol: "ETH/USDT", signal: "BUY" as const, metaScore: 45.1, confidence: 65,
     entry: 3420, sl: 3310, tp: 3650, rr: 2.09, position: 4.1,
-    reason: "RSI recuperándose + precio sobre EMA50 + volumen creciente",
+    reason: "3/5 criterios: RSI 38, MACD positivo, mercado no bajista",
+    criteriaCount: 3,
     strategies: [
-      { name: "Trend Following", signal: "BUY", confidence: 70, reasons: ["EMAs alineadas alcistas", "MACD sobre línea signal"] },
+      { name: "Trend Following", signal: "BUY", confidence: 70, reasons: ["EMAs alineadas alcistas"] },
       { name: "Mean Reversion", signal: "HOLD", confidence: 40, reasons: ["RSI neutral en 52"] },
-      { name: "Breakout", signal: "BUY", confidence: 62, reasons: ["Pico de volumen detectado"] },
+      { name: "Breakout", signal: "BUY", confidence: 62, reasons: ["Volumen creciente"] },
     ],
   },
   {
     symbol: "SOL/USDT", signal: "SELL" as const, metaScore: -38.2, confidence: 58,
     entry: 185.4, sl: 192.5, tp: 172.0, rr: 1.89, position: 3.8,
-    reason: "Death cross EMA + RSI descendiendo desde sobrecompra",
+    reason: "1/5 criterios: solo mercado no bajista, RSI 72 alto",
+    criteriaCount: 1,
     strategies: [
-      { name: "Trend Following", signal: "SELL", confidence: 65, reasons: ["Death cross EMA20/50", "Debajo de EMA200"] },
-      { name: "Mean Reversion", signal: "SELL", confidence: 60, reasons: ["RSI sobrecomprado en 72, descendiendo"] },
-      { name: "Breakout", signal: "HOLD", confidence: 30, reasons: ["Sin nivel de breakout claro"] },
+      { name: "Trend Following", signal: "SELL", confidence: 65, reasons: ["Death cross EMA20/50"] },
+      { name: "Mean Reversion", signal: "SELL", confidence: 60, reasons: ["RSI sobrecomprado en 72"] },
+      { name: "Breakout", signal: "HOLD", confidence: 30, reasons: ["Sin breakout claro"] },
     ],
   },
 ];
@@ -49,8 +53,11 @@ export default function SignalsPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-white">Señales de Compra y Venta — Spot</h1>
       <p className="text-text-secondary text-sm">
-        Señales generadas automáticamente por el sistema. Solo operaciones Spot, sin apalancamiento.
+        Señales basadas en 5 criterios: soporte, RSI, MACD, volumen y fase de mercado. Solo Spot.
       </p>
+
+      {/* Panel de Soportes y Resistencias */}
+      <SupportResistancePanel />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="space-y-3">
@@ -64,10 +71,13 @@ export default function SignalsPage() {
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="text-white font-semibold">{item.symbol}</span>
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
-                  item.signal === "BUY" ? "bg-accent-green/15 text-accent-green border-accent-green/30" :
-                  "bg-accent-red/15 text-accent-red border-accent-red/30"
-                }`}>{signalLabels[item.signal]}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-text-muted font-mono">{item.criteriaCount}/5</span>
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
+                    item.signal === "BUY" ? "bg-accent-green/15 text-accent-green border-accent-green/30" :
+                    "bg-accent-red/15 text-accent-red border-accent-red/30"
+                  }`}>{signalLabels[item.signal]}</span>
+                </div>
               </div>
               <p className="text-text-muted text-xs mb-2">{item.reason}</p>
               <div className="grid grid-cols-3 gap-2 text-xs">
@@ -85,7 +95,10 @@ export default function SignalsPage() {
           <div className={`bg-bg-card border rounded-xl p-6 ${s.signal === "BUY" ? "border-accent-green/30 glow-green" : "border-accent-red/30 glow-red"}`}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-white">{s.symbol}</h2>
-              <SignalBadge signal={s.signal} confidence={s.confidence} size="lg" />
+              <div className="flex items-center gap-3">
+                <span className="text-text-muted text-sm font-mono">{s.criteriaCount}/5 criterios</span>
+                <SignalBadge signal={s.signal} confidence={s.confidence} size="lg" />
+              </div>
             </div>
             <p className="text-text-secondary text-sm mb-4">{s.reason}</p>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -119,7 +132,7 @@ export default function SignalsPage() {
               <ul className="space-y-1">
                 {strat.reasons.map((r, i) => (
                   <li key={i} className="text-sm text-text-secondary flex items-start gap-2">
-                    <span className="text-text-muted mt-0.5">-</span> {r}
+                    <span className="text-text-muted">-</span> {r}
                   </li>
                 ))}
               </ul>
@@ -128,7 +141,6 @@ export default function SignalsPage() {
         </div>
       </div>
 
-      {/* Tabla completa de señales abajo */}
       <SignalsTable standalone />
     </div>
   );

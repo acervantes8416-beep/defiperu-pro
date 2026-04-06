@@ -35,7 +35,7 @@ const profiles: {
     bgActive: "bg-accent-blue/10",
     description: "Balance riesgo/retorno. Diversificación inteligente.",
     maxDD: "20%",
-    assets: "BTC 35% · ETH 25% · SOL 20% · BNB 10% · USDT 10%",
+    assets: "BTC 35% · ETH 25% · SOL 20% · BNB 10% · LINK 5% · USDT 5%",
   },
   {
     type: "agresivo",
@@ -44,9 +44,9 @@ const profiles: {
     color: "text-accent-purple",
     borderColor: "border-accent-purple/40",
     bgActive: "bg-accent-purple/10",
-    description: "Máximo rendimiento. Exposición amplia con altcoins.",
+    description: "Máximo rendimiento. Exposición a IA (TAO) y altcoins.",
     maxDD: "35%",
-    assets: "BTC 25% · ETH 20% · SOL 20% · Alts 25% · USDT 10%",
+    assets: "BTC 25% · ETH 20% · SOL 15% · TAO 15% · Alts 15% · USDT 10%",
   },
 ];
 
