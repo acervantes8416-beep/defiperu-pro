@@ -2,7 +2,7 @@
 import { useStore } from "@/store";
 import {
   LayoutDashboard, Signal, Wallet, Layers, BarChart3,
-  LineChart, Settings, ChevronLeft, ChevronRight,
+  Waves, Settings, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -11,10 +11,10 @@ import clsx from "clsx";
 const nav = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Panel Principal" },
   { href: "/dashboard/signals", icon: Signal, label: "Señales" },
-  { href: "/dashboard/portfolio", icon: Wallet, label: "Portfolio" },
+  { href: "/dashboard/portfolio", icon: Wallet, label: "Mi Portafolio" },
   { href: "/dashboard/narrativas", icon: Layers, label: "Narrativas" },
   { href: "/dashboard/rendimientos", icon: BarChart3, label: "Rendimientos" },
-  { href: "/dashboard/simulacion", icon: LineChart, label: "Simulación" },
+  { href: "/dashboard/ballenas", icon: Waves, label: "Ballenas" },
   { href: "/dashboard/settings", icon: Settings, label: "Configuración" },
 ];
 
@@ -23,12 +23,7 @@ export default function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside
-      className={clsx(
-        "h-screen bg-bg-card border-r border-gray-800 flex flex-col transition-all duration-300",
-        sidebarOpen ? "w-64" : "w-16"
-      )}
-    >
+    <aside className={clsx("h-screen bg-bg-card border-r border-gray-800 flex flex-col transition-all duration-300", sidebarOpen ? "w-64" : "w-16")}>
       <div className="h-16 flex items-center px-4 border-b border-gray-800">
         {sidebarOpen && (
           <span className="text-lg font-bold bg-gradient-to-r from-accent-green to-accent-blue bg-clip-text text-transparent">
@@ -52,16 +47,10 @@ export default function Sidebar() {
         {nav.map((item) => {
           const active = pathname === item.href;
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={clsx(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
-                active
-                  ? "bg-accent-blue/10 text-accent-blue"
-                  : "text-text-secondary hover:text-white hover:bg-bg-hover"
-              )}
-            >
+            <Link key={item.href} href={item.href}
+              className={clsx("flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
+                active ? "bg-accent-blue/10 text-accent-blue" : "text-text-secondary hover:text-white hover:bg-bg-hover"
+              )}>
               <item.icon size={20} />
               {sidebarOpen && <span className="text-sm font-medium">{item.label}</span>}
             </Link>
@@ -71,7 +60,7 @@ export default function Sidebar() {
 
       {sidebarOpen && (
         <div className="p-4 border-t border-gray-800">
-          <div className="text-xs text-text-muted">v3.0.0 — Trading Spot Automatizado</div>
+          <div className="text-xs text-text-muted">v4.0.0 — Trading Spot Inteligente</div>
         </div>
       )}
     </aside>
