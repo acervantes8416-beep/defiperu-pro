@@ -1,0 +1,37 @@
+# ============================================
+# DeFiPerú Pro — Backend Dependencies
+# Verified against all project imports
+# ============================================
+
+# --- Web Framework ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+python-dotenv==1.0.1          # pydantic-settings .env file support
+email-validator==2.2.0         # required by pydantic EmailStr (auth.py)
+
+# --- Database (SQLAlchemy async + PostgreSQL) ---
+sqlalchemy==2.0.36
+asyncpg==0.30.0               # async PostgreSQL driver
+alembic==1.14.1               # DB migrations (not imported but needed for migrate)
+
+# --- Authentication ---
+python-jose[cryptography]==3.3.0   # JWT encode/decode (security.py)
+passlib[bcrypt]==1.7.4             # password hashing (security.py)
+bcrypt==4.2.1                      # bcrypt backend for passlib
+
+# --- Exchange & Market Data ---
+ccxt==4.4.53                  # multi-exchange API (market_data.py, executor.py)
+websockets==14.1              # WebSocket support for uvicorn/ccxt
+aiohttp==3.11.11              # async HTTP for ccxt internals
+
+# --- Data Analysis & Indicators ---
+numpy==2.2.1                  # numerical computing (indicators, backtesting, portfolio)
+pandas==2.2.3                 # DataFrames for OHLCV data (used across all services)
+
+# --- Logging ---
+loguru==0.7.3                 # structured logging (used across all services)
+
+# --- HTTP Client ---
+httpx==0.28.1                 # async HTTP client (optional, for external integrations)
