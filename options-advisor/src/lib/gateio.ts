@@ -89,63 +89,8 @@ export async function fetchCandles(asset: "BTC" | "ETH", interval: string = "1h"
   return data.map((k: any[]) => parseFloat(k[4]));
 }
 
-// ── Binance: WebSocket for real-time price (CORS open) ──
-
-type PriceCallback = (price: number) => void;
-type StatusCallback = (connected: boolean) => void;
-
-export class BinanceWS {
-  private ws: WebSocket | null = null;
-  private alive = true;
-  private retry = 0;
-  private timer: ReturnType<typeof setTimeout> | null = null;
-  private asset: "BTC" | "ETH";
-  private onPrice: PriceCallback;
-  private onStatus: StatusCallback;
-
-  constructor(asset: "BTC" | "ETH", onPrice: PriceCallback, onStatus: StatusCallback) {
-    this.asset = asset;
-    this.onPrice = onPrice;
-    this.onStatus = onStatus;
-  }
-
-  connect() {
-    if (!this.alive) return;
-
-    const symbol = this.asset === "BTC" ? "btcusdt" : "ethusdt";
-    const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol}@ticker`);
-    this.ws = ws;
-
-    ws.onopen = () => {
-      this.retry = 0;
-      this.onStatus(true);
-    };
-
-    ws.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data);
-        const price = parseFloat(msg.c); // "c" = current/close price
-        if (price > 0) this.onPrice(price);
-      } catch { /* ignore */ }
-    };
-
-    ws.onerror = () => { ws.close(); };
-
-    ws.onclose = () => {
-      if (!this.alive) return;
-      this.onStatus(false);
-      const delay = Math.min(1000 * Math.pow(2, this.retry), 15000);
-      this.retry++;
-      this.timer = setTimeout(() => this.connect(), delay);
-    };
-  }
-
-  close() {
-    this.alive = false;
-    if (this.timer) clearTimeout(this.timer);
-    if (this.ws) { this.ws.onclose = null; this.ws.close(); }
-  }
-}
+// No WebSocket — pure REST polling to avoid all CORS/WS issues.
+// Spot + candles from Binance (CORS open), options from Gate.io (via Vite proxy).
 
 // ── Gate.io: Options Chain (via Vite proxy) ──
 
