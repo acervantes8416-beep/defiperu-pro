@@ -1,9 +1,12 @@
 /**
- * Gate.io REST + WebSocket client for options data.
+ * Gate.io REST client for options data.
  * All public endpoints — no API keys required.
+ * Uses Vite proxy (/gateapi → api.gateio.ws) to bypass browser CORS.
  */
 
-const REST = "https://api.gateio.ws/api/v4";
+// In dev: Vite proxy rewrites /gateapi → https://api.gateio.ws/api/v4
+// In prod: use direct URL (deploy behind own CORS proxy or same-origin)
+const REST = import.meta.env.DEV ? "/gateapi" : "https://api.gateio.ws/api/v4";
 
 // ── Types ──
 
