@@ -1,43 +1,37 @@
 /**
- * Hook that manages Gate.io data flow: WS + REST polling + engine refresh.
+ * Hook: Gate.io data flow via REST polling only.
+ * Spot price every 3s, options chain every 5min, engine every 30s.
  */
 import { useEffect, useRef } from "react";
 import { useMarketStore } from "@/store/marketStore";
-import { GateIOWS, fetchSpotPrice, fetchOptionsChain, fetchCandles, assetToUnderlying } from "@/lib/gateio";
+import { fetchSpotPrice, fetchOptionsChain, fetchCandles, assetToUnderlying } from "@/lib/gateio";
 
 export function useGateIO() {
-  const store = useMarketStore();
-  const wsRef = useRef<GateIOWS | null>(null);
-  const spotPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const chainPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const enginePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const asset = store.asset;
+  const asset = useMarketStore((s) => s.asset);
+  const spotRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const chainRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const engineRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    // Cleanup previous
-    wsRef.current?.close();
-    if (spotPollRef.current) clearInterval(spotPollRef.current);
-    if (chainPollRef.current) clearInterval(chainPollRef.current);
-    if (enginePollRef.current) clearInterval(enginePollRef.current);
+    // Clear previous timers
+    if (spotRef.current) clearInterval(spotRef.current);
+    if (chainRef.current) clearInterval(chainRef.current);
+    if (engineRef.current) clearInterval(engineRef.current);
 
-    // 1. WebSocket for real-time spot
-    const ws = new GateIOWS(
-      asset,
-      (price) => useMarketStore.getState().setSpot(price),
-      (connected) => useMarketStore.getState().setConnected(connected),
-    );
-    ws.connect();
-    wsRef.current = ws;
+    const store = useMarketStore.getState;
 
-    // 2. Immediate REST spot fetch (before WS connects)
-    fetchSpotPrice(asset)
-      .then((p) => { if (p > 0) useMarketStore.getState().setSpot(p); })
-      .catch(() => {});
+    // ── Spot price polling every 3s ──
+    const pollSpot = () => {
+      fetchSpotPrice(asset)
+        .then((p) => { if (p > 0) store().setSpot(p); })
+        .catch(() => {});
+    };
+    pollSpot(); // immediate
+    spotRef.current = setInterval(pollSpot, 3000);
 
-    // 3. Load options chain + candles
+    // ── Load options chain + candles ──
     const loadData = async () => {
-      const s = useMarketStore.getState();
+      const s = store();
       s.setLoading(true);
       s.setError(null);
 
@@ -48,40 +42,30 @@ export function useGateIO() {
       ]);
 
       if (optRes.status === "fulfilled") {
-        useMarketStore.getState().setOptions(optRes.value);
+        store().setOptions(optRes.value);
       } else {
-        useMarketStore.getState().setError("Error cargando opciones: " + (optRes.reason?.message || "unknown"));
+        store().setError("Error cargando opciones: " + (optRes.reason?.message || "desconocido"));
       }
 
       if (candlesRes.status === "fulfilled" && candlesRes.value.length > 0) {
-        useMarketStore.getState().setCloses(candlesRes.value);
+        store().setCloses(candlesRes.value);
       }
 
-      useMarketStore.getState().setLoading(false);
+      store().setLoading(false);
     };
 
     loadData();
+    chainRef.current = setInterval(loadData, 5 * 60 * 1000); // every 5 min
 
-    // 4. Spot REST polling every 8s — always runs as backup for WS
-    spotPollRef.current = setInterval(() => {
-      fetchSpotPrice(asset)
-        .then((p) => { if (p > 0) useMarketStore.getState().setSpot(p); })
-        .catch(() => {});
-    }, 8000);
-
-    // 5. Refresh chain every 5 min
-    chainPollRef.current = setInterval(loadData, 300000);
-
-    // 6. Engine refresh every 30s
-    enginePollRef.current = setInterval(() => {
-      useMarketStore.getState().runEngine();
+    // ── Engine refresh every 30s ──
+    engineRef.current = setInterval(() => {
+      store().runEngine();
     }, 30000);
 
     return () => {
-      ws.close();
-      if (spotPollRef.current) clearInterval(spotPollRef.current);
-      if (chainPollRef.current) clearInterval(chainPollRef.current);
-      if (enginePollRef.current) clearInterval(enginePollRef.current);
+      if (spotRef.current) clearInterval(spotRef.current);
+      if (chainRef.current) clearInterval(chainRef.current);
+      if (engineRef.current) clearInterval(engineRef.current);
     };
   }, [asset]);
 }

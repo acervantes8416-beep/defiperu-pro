@@ -1,4 +1,3 @@
-import { useState, useEffect, useRef } from "react";
 import { useMarketStore } from "@/store/marketStore";
 import { useGateIO } from "@/hooks/useGateIO";
 import AssetSelector from "@/components/AssetSelector";
@@ -23,27 +22,6 @@ const DTE_OPTS: { label: string; value: DTERange }[] = [
 export default function App() {
   useGateIO();
   const store = useMarketStore();
-
-  // Banner: only show after 8 continuous seconds disconnected
-  const [showBanner, setShowBanner] = useState(false);
-  const disconnectedSince = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (store.connected) {
-      disconnectedSince.current = null;
-      setShowBanner(false);
-      return;
-    }
-    if (!disconnectedSince.current) {
-      disconnectedSince.current = Date.now();
-    }
-    const timer = setTimeout(() => {
-      if (disconnectedSince.current && Date.now() - disconnectedSince.current >= 8000) {
-        setShowBanner(true);
-      }
-    }, 8000);
-    return () => clearTimeout(timer);
-  }, [store.connected]);
   const riskPerOp = Math.round(store.capital * 0.02);
 
   return (
@@ -62,13 +40,11 @@ export default function App() {
             Gate.io
           </span>
 
-          {/* Live indicator */}
-          {store.connected && (
-            <span className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-accent-green live-dot" />
-              <span className="text-[9px] font-mono text-accent-green">LIVE</span>
-            </span>
-          )}
+          {/* REST polling indicator */}
+          <span className="flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-accent-green live-dot" />
+            <span className="text-[9px] font-mono text-accent-green">REST · 3s</span>
+          </span>
 
           {/* Sparkline */}
           <SparklineChart />
@@ -102,13 +78,6 @@ export default function App() {
           <AssetSelector />
         </div>
       </header>
-
-      {/* ── WS Error banner — only after 5s disconnected ── */}
-      {showBanner && (
-        <div className="bg-accent-yellow/10 border-b border-accent-yellow/30 px-4 py-1.5 text-center text-accent-yellow text-xs font-mono">
-          {store.error || "WebSocket desconectado"} — Reconnecting...
-        </div>
-      )}
 
       {/* ── Main ── */}
       <main className="flex-1 p-4 space-y-4 max-w-[1600px] mx-auto w-full">
@@ -145,19 +114,19 @@ export default function App() {
 
       {/* ── Footer ── */}
       <footer className="bg-bg-surface border-t border-gray-800 px-4 py-2 flex items-center justify-between text-[10px] text-text-muted font-mono max-w-[1600px] mx-auto w-full">
-        <span>v2.0 · Gate.io Public API v4 · No API keys required</span>
+        <span>v2.1 · Gate.io REST API v4 · Polling cada 3s · Sin API keys</span>
         <div className="flex items-center gap-3">
           {store.lastUpdated && <span>Updated {store.lastUpdated.toLocaleTimeString()}</span>}
           <span className="flex items-center gap-1">
-            <span className={clsx("w-1.5 h-1.5 rounded-full", store.connected ? "bg-accent-green" : "bg-accent-red")} />
-            WS {store.connected ? "ON" : "OFF"}
+            <span className="w-1.5 h-1.5 rounded-full bg-accent-green" />
+            REST
           </span>
           <span>{store.options.length} contracts</span>
         </div>
       </footer>
 
       <div className="bg-bg px-4 py-1 text-center text-[9px] text-text-muted">
-        Disclaimer: This tool is for educational purposes only. Not financial advice. Options trading involves significant risk of loss.
+        Disclaimer: Educational purposes only. Not financial advice. Options trading involves significant risk of loss.
       </div>
     </div>
   );

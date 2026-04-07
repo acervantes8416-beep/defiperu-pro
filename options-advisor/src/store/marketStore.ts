@@ -13,7 +13,7 @@ interface MarketState {
   spot: number;
   options: OptionContract[];
   closes: number[];
-  connected: boolean;
+  connected: boolean; // true = REST polling active
   error: string | null;
   rsi14: number | null;
   ema9: number | null;
@@ -49,7 +49,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
   spot: 0,
   options: [],
   closes: [],
-  connected: false,
+  connected: true, // REST polling — always "connected"
   error: null,
   rsi14: null,
   ema9: null,
