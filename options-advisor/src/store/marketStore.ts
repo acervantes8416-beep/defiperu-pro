@@ -78,8 +78,17 @@ export const useMarketStore = create<MarketState>((set, get) => ({
   },
 
   setOptions: (options) => {
+    console.log("[Store] setOptions:", options.length, "contracts loaded");
     set({ options });
     get().updateMarketData();
+    // Retry engine after 2s to ensure spot + indicators are ready
+    setTimeout(() => {
+      const s = get();
+      if (s.options.length > 0 && s.signals.length === 0) {
+        console.log("[Store] Retrying engine after 2s delay...");
+        s.runEngine();
+      }
+    }, 2000);
   },
 
   setCloses: (closes) => {
@@ -113,7 +122,15 @@ export const useMarketStore = create<MarketState>((set, get) => ({
 
     const pcr = calcPCR(s.options);
     const maxPain = calcMaxPain(s.options, s.spot);
-    const nearExpiries = getNearestExpiries(s.options, 3);
+    let nearExpiries = getNearestExpiries(s.options, 3);
+
+    // Fallback: if no future expiries found, use any available expiryRaw
+    if (nearExpiries.length === 0) {
+      const allExpiries = [...new Set(s.options.map((o) => o.expiryRaw))].sort();
+      nearExpiries = allExpiries.slice(0, 3);
+      console.log("[Store] Using fallback expiries:", nearExpiries);
+    }
+
     const smile = nearExpiries.length > 0
       ? calcVolSmile(s.options, nearExpiries[0], s.spot)
       : { smileData: [], atmIV: 0, skew: 0, otmCallIV: 0, otmPutIV: 0 };
@@ -124,7 +141,10 @@ export const useMarketStore = create<MarketState>((set, get) => ({
 
   runEngine: () => {
     const s = get();
-    if (s.options.length === 0 || s.spot <= 0) return;
+    if (s.options.length === 0 || s.spot <= 0) {
+      console.log("[Store] runEngine skip — spot:", s.spot, "options:", s.options.length);
+      return;
+    }
 
     const signals = runEngine({
       spot: s.spot,

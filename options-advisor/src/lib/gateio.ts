@@ -151,7 +151,7 @@ export async function fetchSpotPrice(asset: "BTC" | "ETH"): Promise<number> {
   return last;
 }
 
-// ── WebSocket ──
+// ── WebSocket — SPOT ONLY (stable, no options WS) ──
 
 type WSCallback = (price: number) => void;
 type StatusCallback = (connected: boolean) => void;
@@ -159,10 +159,7 @@ type StatusCallback = (connected: boolean) => void;
 export class GateIOWS {
   private ws: WebSocket | null = null;
   private retry = 0;
-  private optionsFails = 0;          // Track options WS consecutive failures
-  private useSpotOnly = false;        // Switch permanently to spot after 2 options failures
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private graceTimer: ReturnType<typeof setTimeout> | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private alive = true;
   private asset: "BTC" | "ETH";
@@ -177,73 +174,15 @@ export class GateIOWS {
 
   connect() {
     if (!this.alive) return;
-    // If options WS failed >2 times, go straight to spot (more stable)
-    if (this.useSpotOnly) {
-      this.connectSpotWS();
-    } else {
-      this.tryOptionsWS();
-    }
-  }
 
-  private tryOptionsWS() {
-    try {
-      const ws = new WebSocket("wss://op.gateio.ws/v4/ws/usdt");
-      this.ws = ws;
-
-      ws.onopen = () => {
-        this.retry = 0;
-        this.optionsFails = 0;
-        this.cancelGrace();
-        this.onStatus(true);
-        ws.send(JSON.stringify({
-          time: Math.floor(Date.now() / 1000),
-          channel: "options.ul_tickers",
-          event: "subscribe",
-          payload: [assetToUnderlying(this.asset)],
-        }));
-        this.startPing(ws);
-      };
-
-      ws.onmessage = (e) => {
-        try {
-          const msg = JSON.parse(e.data);
-          if (msg.channel === "options.ul_tickers" && msg.event === "update") {
-            const price = parseFloat(msg.result?.index_price || msg.result?.trade_price) || 0;
-            if (price > 0) this.onPrice(price);
-          }
-        } catch { /* ignore */ }
-      };
-
-      ws.onerror = () => { ws.close(); };
-
-      ws.onclose = () => {
-        this.stopPing();
-        this.optionsFails++;
-        // After 2 options failures, switch permanently to spot WS
-        if (this.optionsFails >= 2) {
-          this.useSpotOnly = true;
-        }
-        // Grace period: wait 4s before reporting disconnected
-        this.scheduleGrace();
-        if (this.alive) this.connectSpotWS();
-      };
-    } catch {
-      this.optionsFails++;
-      if (this.optionsFails >= 2) this.useSpotOnly = true;
-      this.connectSpotWS();
-    }
-  }
-
-  private connectSpotWS() {
-    if (!this.alive) return;
     try {
       const ws = new WebSocket("wss://api.gateio.ws/ws/v4/");
       this.ws = ws;
 
       ws.onopen = () => {
         this.retry = 0;
-        this.cancelGrace();
         this.onStatus(true);
+        // Subscribe to spot tickers
         ws.send(JSON.stringify({
           time: Math.floor(Date.now() / 1000),
           channel: "spot.tickers",
@@ -260,37 +199,27 @@ export class GateIOWS {
             const price = parseFloat(msg.result?.last) || 0;
             if (price > 0) this.onPrice(price);
           }
-        } catch { /* ignore */ }
+        } catch { /* ignore parse errors */ }
       };
 
       ws.onerror = () => { ws.close(); };
 
       ws.onclose = () => {
         this.stopPing();
-        this.scheduleGrace();
+        // Only report disconnected after backoff delay (avoid flicker)
         if (this.alive) this.reconnect();
       };
     } catch {
-      this.reconnect();
+      if (this.alive) this.reconnect();
     }
   }
 
-  /** Grace period: only emit disconnected after 4s without reconnecting */
-  private scheduleGrace() {
-    if (this.graceTimer) return; // already pending
-    this.graceTimer = setTimeout(() => {
-      this.graceTimer = null;
-      this.onStatus(false);
-    }, 4000);
-  }
-
-  private cancelGrace() {
-    if (this.graceTimer) { clearTimeout(this.graceTimer); this.graceTimer = null; }
-  }
-
   private reconnect() {
-    const delay = Math.min(1000 * Math.pow(2, this.retry), 30000);
+    // Exponential backoff: 1s, 2s, 4s, 8s, max 15s
+    const delay = Math.min(1000 * Math.pow(2, this.retry), 15000);
     this.retry++;
+    // Only emit disconnected if we've been trying for a while (>8s)
+    if (this.retry > 3) this.onStatus(false);
     this.timer = setTimeout(() => this.connect(), delay);
   }
 
@@ -298,9 +227,13 @@ export class GateIOWS {
     this.stopPing();
     this.pingTimer = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ time: Math.floor(Date.now() / 1000), channel: "spot.ping" }));
+        ws.send(JSON.stringify({
+          time: Math.floor(Date.now() / 1000),
+          channel: "spot.ping",
+          event: "ping",
+        }));
       }
-    }, 20000);
+    }, 15000);
   }
 
   private stopPing() {
@@ -310,7 +243,6 @@ export class GateIOWS {
   close() {
     this.alive = false;
     this.stopPing();
-    this.cancelGrace();
     if (this.timer) clearTimeout(this.timer);
     if (this.ws) { this.ws.onclose = null; this.ws.close(); }
   }

@@ -24,7 +24,7 @@ export default function App() {
   useGateIO();
   const store = useMarketStore();
 
-  // Banner: only show after 5s of being disconnected
+  // Banner: only show after 8 continuous seconds disconnected
   const [showBanner, setShowBanner] = useState(false);
   const disconnectedSince = useRef<number | null>(null);
 
@@ -32,17 +32,17 @@ export default function App() {
     if (store.connected) {
       disconnectedSince.current = null;
       setShowBanner(false);
-    } else {
-      if (!disconnectedSince.current) {
-        disconnectedSince.current = Date.now();
-      }
-      const timer = setTimeout(() => {
-        if (disconnectedSince.current && Date.now() - disconnectedSince.current >= 5000) {
-          setShowBanner(true);
-        }
-      }, 5000);
-      return () => clearTimeout(timer);
+      return;
     }
+    if (!disconnectedSince.current) {
+      disconnectedSince.current = Date.now();
+    }
+    const timer = setTimeout(() => {
+      if (disconnectedSince.current && Date.now() - disconnectedSince.current >= 8000) {
+        setShowBanner(true);
+      }
+    }, 8000);
+    return () => clearTimeout(timer);
   }, [store.connected]);
   const riskPerOp = Math.round(store.capital * 0.02);
 
