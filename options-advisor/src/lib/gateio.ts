@@ -1,12 +1,13 @@
 /**
- * Gate.io REST client for options data.
- * All public endpoints — no API keys required.
- * Uses Vite proxy (/gateapi → api.gateio.ws) to bypass browser CORS.
+ * Data layer: Binance (spot + candles, CORS open) + Gate.io (options via Vite proxy).
+ * No API keys required.
  */
 
-// In dev: Vite proxy rewrites /gateapi → https://api.gateio.ws/api/v4
-// In prod: use direct URL (deploy behind own CORS proxy or same-origin)
-const REST = import.meta.env.DEV ? "/gateapi" : "https://api.gateio.ws/api/v4";
+// Gate.io options: proxied in dev, direct in prod
+const GATE_REST = import.meta.env.DEV ? "/gateapi" : "https://api.gateio.ws/api/v4";
+
+// Binance: CORS open, works directly from browser
+const BINANCE = "https://api.binance.com/api/v3";
 
 // ── Types ──
 
@@ -36,9 +37,12 @@ export function assetToUnderlying(asset: "BTC" | "ETH"): string {
   return `${asset}_USDT`;
 }
 
+function assetToBinanceSymbol(asset: "BTC" | "ETH"): string {
+  return asset === "BTC" ? "BTCUSDT" : "ETHUSDT";
+}
+
 const MONTHS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
 
-/** "20250425" → "25APR25" */
 function rawToDisplay(raw: string): string {
   const d = raw.slice(6, 8);
   const m = MONTHS[parseInt(raw.slice(4, 6)) - 1] || "???";
@@ -46,7 +50,6 @@ function rawToDisplay(raw: string): string {
   return `${d}${m}${y}`;
 }
 
-/** Parse "BTC_USDT-20250425-87000-C" → { underlying, expiryRaw, strike, type } */
 export function parseGateContract(name: string) {
   const parts = name.split("-");
   if (parts.length !== 4) return null;
@@ -58,7 +61,6 @@ export function parseGateContract(name: string) {
   };
 }
 
-/** "20250425" → UTC milliseconds at 08:00 */
 export function gateExpiryToTimestamp(raw: string): number {
   const y = parseInt(raw.slice(0, 4));
   const m = parseInt(raw.slice(4, 6)) - 1;
@@ -66,14 +68,93 @@ export function gateExpiryToTimestamp(raw: string): number {
   return Date.UTC(y, m, d, 8, 0, 0);
 }
 
-// ── REST ──
+// ── Binance: Spot Price (CORS open) ──
+
+export async function fetchSpotPrice(asset: "BTC" | "ETH"): Promise<number> {
+  const symbol = assetToBinanceSymbol(asset);
+  const resp = await fetch(`${BINANCE}/ticker/price?symbol=${symbol}`);
+  if (!resp.ok) throw new Error(`Binance spot: ${resp.status}`);
+  const data = await resp.json();
+  return parseFloat(data.price ?? "0") || 0;
+}
+
+// ── Binance: Candles for RSI/EMA (CORS open) ──
+
+export async function fetchCandles(asset: "BTC" | "ETH", interval: string = "1h", limit: number = 200): Promise<number[]> {
+  const symbol = assetToBinanceSymbol(asset);
+  const resp = await fetch(`${BINANCE}/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`);
+  if (!resp.ok) throw new Error(`Binance klines: ${resp.status}`);
+  const data: any[] = await resp.json();
+  // Binance klines: each element is array, index 4 = close price
+  return data.map((k: any[]) => parseFloat(k[4]));
+}
+
+// ── Binance: WebSocket for real-time price (CORS open) ──
+
+type PriceCallback = (price: number) => void;
+type StatusCallback = (connected: boolean) => void;
+
+export class BinanceWS {
+  private ws: WebSocket | null = null;
+  private alive = true;
+  private retry = 0;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private asset: "BTC" | "ETH";
+  private onPrice: PriceCallback;
+  private onStatus: StatusCallback;
+
+  constructor(asset: "BTC" | "ETH", onPrice: PriceCallback, onStatus: StatusCallback) {
+    this.asset = asset;
+    this.onPrice = onPrice;
+    this.onStatus = onStatus;
+  }
+
+  connect() {
+    if (!this.alive) return;
+
+    const symbol = this.asset === "BTC" ? "btcusdt" : "ethusdt";
+    const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol}@ticker`);
+    this.ws = ws;
+
+    ws.onopen = () => {
+      this.retry = 0;
+      this.onStatus(true);
+    };
+
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        const price = parseFloat(msg.c); // "c" = current/close price
+        if (price > 0) this.onPrice(price);
+      } catch { /* ignore */ }
+    };
+
+    ws.onerror = () => { ws.close(); };
+
+    ws.onclose = () => {
+      if (!this.alive) return;
+      this.onStatus(false);
+      const delay = Math.min(1000 * Math.pow(2, this.retry), 15000);
+      this.retry++;
+      this.timer = setTimeout(() => this.connect(), delay);
+    };
+  }
+
+  close() {
+    this.alive = false;
+    if (this.timer) clearTimeout(this.timer);
+    if (this.ws) { this.ws.onclose = null; this.ws.close(); }
+  }
+}
+
+// ── Gate.io: Options Chain (via Vite proxy) ──
 
 export async function fetchOptionsChain(asset: "BTC" | "ETH"): Promise<OptionContract[]> {
   const underlying = assetToUnderlying(asset);
-  const resp = await fetch(`${REST}/options/tickers?underlying=${underlying}`, {
+  const resp = await fetch(`${GATE_REST}/options/tickers?underlying=${underlying}`, {
     signal: AbortSignal.timeout(10000),
   });
-  if (!resp.ok) throw new Error(`Options chain: ${resp.status}`);
+  if (!resp.ok) throw new Error(`Gate.io options: ${resp.status}`);
   const items: any[] = await resp.json();
 
   const contracts: OptionContract[] = [];
@@ -81,7 +162,7 @@ export async function fetchOptionsChain(asset: "BTC" | "ETH"): Promise<OptionCon
     const parsed = parseGateContract(item.name || "");
     if (!parsed) continue;
 
-    const markIV = (parseFloat(item.mark_iv) || 0) * 100; // 0.724 → 72.4
+    const markIV = (parseFloat(item.mark_iv) || 0) * 100;
     const bidPrice = parseFloat(item.bid1_price) || 0;
     const askPrice = parseFloat(item.ask1_price) || 0;
     const markPrice = parseFloat(item.mark_price) || 0;
@@ -111,48 +192,3 @@ export async function fetchOptionsChain(asset: "BTC" | "ETH"): Promise<OptionCon
   }
   return contracts;
 }
-
-export async function fetchCandles(
-  underlying: string, intervalStr: string = "1h", daysBack: number = 14
-): Promise<number[]> {
-  const now = Math.floor(Date.now() / 1000);
-  const from = now - daysBack * 86400;
-
-  // Try options candles first
-  try {
-    const resp = await fetch(
-      `${REST}/options/underlying/candlesticks?underlying=${underlying}&interval=${intervalStr}&from=${from}&to=${now}`,
-      { signal: AbortSignal.timeout(10000) }
-    );
-    if (resp.ok) {
-      const data: any[] = await resp.json();
-      if (data.length > 0) {
-        return data.map((c: any) => parseFloat(c.c || c[4]) || 0).filter(Boolean);
-      }
-    }
-  } catch { /* fallback */ }
-
-  // Fallback to spot candles
-  const pair = underlying.replace("_", "_");
-  const resp = await fetch(
-    `${REST}/spot/candlesticks?currency_pair=${pair}&interval=${intervalStr}&from=${from}&to=${now}`,
-    { signal: AbortSignal.timeout(10000) }
-  );
-  if (!resp.ok) throw new Error(`Candles: ${resp.status}`);
-  const data: any[] = await resp.json();
-  return data.map((c: any) => parseFloat(c[2]) || 0).filter(Boolean); // [2] = close
-}
-
-export async function fetchSpotPrice(asset: "BTC" | "ETH"): Promise<number> {
-  const pair = `${asset}_USDT`;
-  const resp = await fetch(`${REST}/spot/tickers?currency_pair=${pair}`, {
-    signal: AbortSignal.timeout(10000),
-  });
-  if (!resp.ok) throw new Error(`Spot: ${resp.status}`);
-  const data = await resp.json();
-  const last = parseFloat(data[0]?.last) || 0;
-  return last;
-}
-
-// WebSocket removed — browser CORS blocks Gate.io WS.
-// All data via REST polling (fetchSpotPrice every 3s).

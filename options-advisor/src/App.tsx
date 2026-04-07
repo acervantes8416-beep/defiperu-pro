@@ -29,27 +29,26 @@ export default function App() {
       {/* ── Header ── */}
       <header className="bg-bg-surface border-b border-gray-800 px-4 py-2.5 sticky top-0 z-40">
         <div className="max-w-[1600px] mx-auto flex items-center gap-4 flex-wrap">
-          {/* Logo */}
           <div className="flex items-center gap-2 mr-2">
             <span className="text-accent-blue text-xl font-display font-extrabold">Ω</span>
             <span className="text-white font-display font-bold text-sm hidden sm:inline">OPTIONS ADVISOR</span>
           </div>
 
-          {/* Gate.io badge */}
+          {/* Source badges */}
           <span className="text-[9px] font-mono bg-accent-yellow/10 text-accent-yellow border border-accent-yellow/30 px-1.5 py-0.5 rounded">
-            Gate.io
+            Binance + Gate.io
           </span>
 
-          {/* REST polling indicator */}
+          {/* Live indicator — green when WS connected */}
           <span className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-accent-green live-dot" />
-            <span className="text-[9px] font-mono text-accent-green">REST · 3s</span>
+            <span className={clsx("w-1.5 h-1.5 rounded-full", store.connected ? "bg-accent-green live-dot" : "bg-accent-yellow")} />
+            <span className={clsx("text-[9px] font-mono", store.connected ? "text-accent-green" : "text-accent-yellow")}>
+              {store.connected ? "LIVE" : "REST"}
+            </span>
           </span>
 
-          {/* Sparkline */}
           <SparklineChart />
 
-          {/* DTE selector */}
           <div className="flex gap-0.5 bg-bg rounded-lg p-0.5 border border-gray-800">
             {DTE_OPTS.map((d) => (
               <button key={d.value} onClick={() => store.setDteRange(d.value)}
@@ -61,7 +60,6 @@ export default function App() {
 
           <div className="flex-1" />
 
-          {/* Capital input */}
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5">
               <label className="text-text-muted text-[10px] font-mono">CAPITAL</label>
@@ -74,7 +72,6 @@ export default function App() {
             <span className="text-[9px] text-text-muted font-mono">Riesgo/op: ${riskPerOp} (2%)</span>
           </div>
 
-          {/* Asset selector */}
           <AssetSelector />
         </div>
       </header>
@@ -107,19 +104,19 @@ export default function App() {
 
         {store.loading && (
           <div className="bg-bg-surface border border-gray-800 rounded-xl p-8 text-center text-text-muted text-sm animate-pulse">
-            Obteniendo datos de Gate.io...
+            Obteniendo datos...
           </div>
         )}
       </main>
 
       {/* ── Footer ── */}
       <footer className="bg-bg-surface border-t border-gray-800 px-4 py-2 flex items-center justify-between text-[10px] text-text-muted font-mono max-w-[1600px] mx-auto w-full">
-        <span>v2.1 · Gate.io REST API v4 · Polling cada 3s · Sin API keys</span>
+        <span>v3.0 · Spot: Binance WS · Options: Gate.io · Sin API keys</span>
         <div className="flex items-center gap-3">
           {store.lastUpdated && <span>Updated {store.lastUpdated.toLocaleTimeString()}</span>}
           <span className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-accent-green" />
-            REST
+            <span className={clsx("w-1.5 h-1.5 rounded-full", store.connected ? "bg-accent-green" : "bg-accent-yellow")} />
+            {store.connected ? "WS ON" : "REST"}
           </span>
           <span>{store.options.length} contracts</span>
         </div>

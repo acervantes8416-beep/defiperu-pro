@@ -49,7 +49,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
   spot: 0,
   options: [],
   closes: [],
-  connected: true, // REST polling — always "connected"
+  connected: false,
   error: null,
   rsi14: null,
   ema9: null,

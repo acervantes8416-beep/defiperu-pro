@@ -2,7 +2,7 @@ import { useMarketStore } from "@/store/marketStore";
 import clsx from "clsx";
 
 export default function AssetSelector() {
-  const { asset, setAsset, spot } = useMarketStore();
+  const { asset, setAsset, spot, connected } = useMarketStore();
   return (
     <div className="flex items-center gap-3">
       {(["BTC", "ETH"] as const).map((a) => (
@@ -16,6 +16,12 @@ export default function AssetSelector() {
           )}
         </button>
       ))}
+      <div className="flex items-center gap-1.5 ml-1">
+        <span className={clsx("w-2 h-2 rounded-full", connected ? "bg-accent-green live-dot" : "bg-accent-yellow")} />
+        <span className={clsx("text-[10px] font-mono", connected ? "text-accent-green" : "text-accent-yellow")}>
+          {connected ? "LIVE" : "REST"}
+        </span>
+      </div>
     </div>
   );
 }
