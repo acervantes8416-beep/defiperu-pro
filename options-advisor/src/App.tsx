@@ -1,97 +1,106 @@
-import { useEffect, useCallback, useRef } from "react";
 import { useMarketStore } from "@/store/marketStore";
-import { useDeribit } from "@/hooks/useDeribit";
+import { useGateIO } from "@/hooks/useGateIO";
 import AssetSelector from "@/components/AssetSelector";
+import SparklineChart from "@/components/SparklineChart";
 import MetricsGrid from "@/components/MetricsGrid";
 import VolSmileChart from "@/components/VolSmileChart";
 import GreeksTable from "@/components/GreeksTable";
 import RecommendationCard from "@/components/RecommendationCard";
+import type { DTERange } from "@/lib/decisionEngine";
+import clsx from "clsx";
+
+const DTE_OPTS: { label: string; value: DTERange }[] = [
+  { label: "1d", value: "1d" },
+  { label: "3d", value: "3d" },
+  { label: "5d", value: "5d" },
+  { label: "7d", value: "7d" },
+  { label: "14d", value: "14d" },
+  { label: "30d", value: "30d" },
+  { label: "Auto", value: "auto" },
+];
 
 export default function App() {
+  useGateIO();
   const store = useMarketStore();
-  const lastRsiRef = useRef<number | null>(null);
-
-  const onSpotUpdate = useCallback((price: number) => {
-    useMarketStore.getState().setSpot(price);
-  }, []);
-
-  const { connected, error: wsError } = useDeribit(store.asset, onSpotUpdate);
-
-  // Sync connection state
-  useEffect(() => { store.setConnected(connected); }, [connected]);
-
-  // Initial data fetch
-  useEffect(() => { store.fetchData(); }, [store.asset]);
-
-  // Refetch options every 5 min
-  useEffect(() => {
-    const interval = setInterval(() => store.fetchData(), 300000);
-    return () => clearInterval(interval);
-  }, [store.asset]);
-
-  // Re-run engine every 30s or when RSI changes significantly
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const s = useMarketStore.getState();
-      if (lastRsiRef.current === null || s.rsi14 === null ||
-          Math.abs((s.rsi14 || 0) - (lastRsiRef.current || 0)) > 2) {
-        s.runSignals();
-        lastRsiRef.current = s.rsi14;
-      }
-    }, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  const riskPerOp = Math.round(store.capital * 0.02);
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Header */}
-      <header className="bg-bg-card border-b border-gray-800 px-6 py-3 flex items-center justify-between gap-4 sticky top-0 z-40">
-        <div className="flex items-center gap-4">
-          <h1 className="text-lg font-bold bg-gradient-to-r from-accent-green to-accent-blue bg-clip-text text-transparent">
-            Options Advisor
-          </h1>
-          <AssetSelector />
-        </div>
-
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <label className="text-text-muted text-xs">Capital (USDT)</label>
-            <input
-              type="number" value={store.capital}
-              onChange={(e) => store.setCapital(parseFloat(e.target.value) || 0)}
-              className="bg-bg border border-gray-700 rounded-lg px-3 py-1.5 text-white font-mono text-sm w-28"
-            />
+      {/* ── Header ── */}
+      <header className="bg-bg-surface border-b border-gray-800 px-4 py-2.5 sticky top-0 z-40">
+        <div className="max-w-[1600px] mx-auto flex items-center gap-4 flex-wrap">
+          {/* Logo */}
+          <div className="flex items-center gap-2 mr-2">
+            <span className="text-accent-blue text-xl font-display font-extrabold">Ω</span>
+            <span className="text-white font-display font-bold text-sm hidden sm:inline">OPTIONS ADVISOR</span>
           </div>
+
+          {/* Gate.io badge */}
+          <span className="text-[9px] font-mono bg-accent-yellow/10 text-accent-yellow border border-accent-yellow/30 px-1.5 py-0.5 rounded">
+            Gate.io
+          </span>
+
+          {/* Live indicator */}
+          {store.connected && (
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent-green live-dot" />
+              <span className="text-[9px] font-mono text-accent-green">LIVE</span>
+            </span>
+          )}
+
+          {/* Sparkline */}
+          <SparklineChart />
+
+          {/* DTE selector */}
+          <div className="flex gap-0.5 bg-bg rounded-lg p-0.5 border border-gray-800">
+            {DTE_OPTS.map((d) => (
+              <button key={d.value} onClick={() => store.setDteRange(d.value)}
+                className={clsx("px-2 py-1 rounded text-[10px] font-mono transition-colors",
+                  store.dteRange === d.value ? "bg-accent-blue text-black font-bold" : "text-text-muted hover:text-white"
+                )}>{d.label}</button>
+            ))}
+          </div>
+
+          <div className="flex-1" />
+
+          {/* Capital input */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <label className="text-text-muted text-[10px] font-mono">CAPITAL</label>
+              <input
+                type="number" value={store.capital}
+                onChange={(e) => store.setCapital(parseFloat(e.target.value) || 0)}
+                className="bg-bg border border-gray-700 rounded-lg px-2.5 py-1 text-white font-mono text-xs w-24 focus:border-accent-blue focus:outline-none"
+              />
+            </div>
+            <span className="text-[9px] text-text-muted font-mono">Riesgo/op: ${riskPerOp} (2%)</span>
+          </div>
+
+          {/* Asset selector */}
+          <AssetSelector />
         </div>
       </header>
 
-      {/* WS Error Banner */}
-      {wsError && !connected && (
-        <div className="bg-accent-yellow/10 border-b border-accent-yellow/30 px-6 py-2 text-accent-yellow text-xs text-center">
-          {wsError} — Reconnecting...
+      {/* ── WS Error banner ── */}
+      {!store.connected && store.error && (
+        <div className="bg-accent-yellow/10 border-b border-accent-yellow/30 px-4 py-1.5 text-center text-accent-yellow text-xs font-mono">
+          {store.error} — Reconnecting...
         </div>
       )}
 
-      {/* Main Content */}
-      <main className="flex-1 p-6 space-y-6 max-w-[1600px] mx-auto w-full">
-        {/* Row 1: Metrics Grid */}
+      {/* ── Main ── */}
+      <main className="flex-1 p-4 space-y-4 max-w-[1600px] mx-auto w-full">
         <MetricsGrid />
 
-        {/* Row 2: Chart + Greeks */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          <div className="lg:col-span-3">
-            <VolSmileChart />
-          </div>
-          <div className="lg:col-span-2">
-            <GreeksTable />
-          </div>
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+          <div className="lg:col-span-3"><VolSmileChart /></div>
+          <div className="lg:col-span-2"><GreeksTable /></div>
         </div>
 
-        {/* Row 3: Recommendations */}
         {store.signals.length > 0 && (
           <div>
-            <h2 className="text-white font-semibold mb-4">Señales de Trading</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <h2 className="text-white font-display font-bold text-sm mb-3">SEÑALES DE TRADING</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {store.signals.map((sig, i) => (
                 <RecommendationCard key={`${sig.instrument}-${i}`} signal={sig} />
               ))}
@@ -99,36 +108,35 @@ export default function App() {
           </div>
         )}
 
-        {store.signals.length === 0 && !store.loading && (
-          <div className="bg-bg-card border border-gray-800 rounded-xl p-8 text-center text-text-muted">
-            {store.options.length === 0
-              ? "Cargando datos de opciones desde Deribit..."
-              : "Analizando mercado... Las señales aparecerán cuando haya oportunidades."
-            }
+        {store.signals.length === 0 && !store.loading && store.options.length > 0 && (
+          <div className="bg-bg-surface border border-gray-800 rounded-xl p-8 text-center text-text-muted text-sm">
+            Analizando mercado... Las señales aparecerán cuando se detecten oportunidades.
           </div>
         )}
 
         {store.loading && (
-          <div className="bg-bg-card border border-gray-800 rounded-xl p-8 text-center text-text-muted animate-pulse">
-            Obteniendo datos de Deribit...
+          <div className="bg-bg-surface border border-gray-800 rounded-xl p-8 text-center text-text-muted text-sm animate-pulse">
+            Obteniendo datos de Gate.io...
           </div>
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="bg-bg-card border-t border-gray-800 px-6 py-2 flex items-center justify-between text-xs text-text-muted">
-        <span>
-          {store.lastUpdated
-            ? `Último update: ${store.lastUpdated.toLocaleTimeString()}`
-            : "Sin datos aún"
-          }
-        </span>
-        <div className="flex items-center gap-2">
-          <span className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-accent-green live-dot" : "bg-accent-red"}`} />
-          <span>WS {connected ? "Connected" : "Disconnected"}</span>
-          <span className="ml-4">{store.options.length} contracts loaded</span>
+      {/* ── Footer ── */}
+      <footer className="bg-bg-surface border-t border-gray-800 px-4 py-2 flex items-center justify-between text-[10px] text-text-muted font-mono max-w-[1600px] mx-auto w-full">
+        <span>v2.0 · Gate.io Public API v4 · No API keys required</span>
+        <div className="flex items-center gap-3">
+          {store.lastUpdated && <span>Updated {store.lastUpdated.toLocaleTimeString()}</span>}
+          <span className="flex items-center gap-1">
+            <span className={clsx("w-1.5 h-1.5 rounded-full", store.connected ? "bg-accent-green" : "bg-accent-red")} />
+            WS {store.connected ? "ON" : "OFF"}
+          </span>
+          <span>{store.options.length} contracts</span>
         </div>
       </footer>
+
+      <div className="bg-bg px-4 py-1 text-center text-[9px] text-text-muted">
+        Disclaimer: This tool is for educational purposes only. Not financial advice. Options trading involves significant risk of loss.
+      </div>
     </div>
   );
 }

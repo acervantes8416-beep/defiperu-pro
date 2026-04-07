@@ -1,10 +1,9 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
 body { background: #0a0e17; color: #e5e7eb; }
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: #0a0e17; }
 ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
-@keyframes pulse-live { 0%,100%{opacity:1}50%{opacity:.4} }
+@keyframes pulse-live { 0%,100%{opacity:1}50%{opacity:.3} }
 .live-dot { animation: pulse-live 1.5s ease-in-out infinite; }

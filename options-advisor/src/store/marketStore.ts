@@ -1,13 +1,12 @@
 /**
- * Zustand store — estado global del mercado y señales.
+ * Zustand global state — market data pipeline.
  */
 import { create } from "zustand";
-import type { OptionContract } from "@/lib/maxPain";
-import type { Signal } from "@/lib/decisionEngine";
-import { calcRSI, calcEMA, detectTrend } from "@/lib/indicators";
-import { calcMaxPain, calcPCR, calcVolSmile } from "@/lib/maxPain";
+import type { OptionContract } from "@/lib/gateio";
+import type { Signal, DTERange } from "@/lib/decisionEngine";
+import { calcRSI, calcEMA, detectTrend, detectCross } from "@/lib/indicators";
+import { calcMaxPain, calcPCR, calcVolSmile, getNearestExpiries } from "@/lib/maxPain";
 import { runEngine } from "@/lib/decisionEngine";
-import { fetchOptionChain, fetchCandles } from "@/lib/deribit";
 
 interface MarketState {
   asset: "BTC" | "ETH";
@@ -15,28 +14,34 @@ interface MarketState {
   options: OptionContract[];
   closes: number[];
   connected: boolean;
+  error: string | null;
   rsi14: number | null;
   ema9: number | null;
   ema21: number | null;
   ema55: number | null;
   trend: "BULLISH" | "BEARISH" | "NEUTRAL";
+  cross: "GOLDEN" | "DEATH" | null;
   pcr: { pcrOI: number; pcrVol: number };
-  maxPain: { maxPainStrike: number; distancePct: number };
-  smile: { smileData: any[]; atmIV: number; skew: number };
+  maxPain: { maxPainStrike: number; distancePct: number; painByStrike: { strike: number; pain: number }[] };
+  smile: { smileData: any[]; atmIV: number; skew: number; otmCallIV: number; otmPutIV: number };
+  nearExpiries: string[];
   signals: Signal[];
   capital: number;
+  dteRange: DTERange;
   lastUpdated: Date | null;
   loading: boolean;
-  error: string | null;
-  expiries: string[];
 
-  // Actions
   setAsset: (a: "BTC" | "ETH") => void;
   setSpot: (s: number) => void;
+  setOptions: (o: OptionContract[]) => void;
+  setCloses: (c: number[]) => void;
   setConnected: (c: boolean) => void;
   setCapital: (c: number) => void;
-  fetchData: () => Promise<void>;
-  runSignals: () => void;
+  setDteRange: (r: DTERange) => void;
+  setLoading: (l: boolean) => void;
+  setError: (e: string | null) => void;
+  updateMarketData: () => void;
+  runEngine: () => void;
 }
 
 export const useMarketStore = create<MarketState>((set, get) => ({
@@ -45,75 +50,81 @@ export const useMarketStore = create<MarketState>((set, get) => ({
   options: [],
   closes: [],
   connected: false,
+  error: null,
   rsi14: null,
   ema9: null,
   ema21: null,
   ema55: null,
   trend: "NEUTRAL",
+  cross: null,
   pcr: { pcrOI: 0, pcrVol: 0 },
-  maxPain: { maxPainStrike: 0, distancePct: 0 },
-  smile: { smileData: [], atmIV: 0, skew: 0 },
+  maxPain: { maxPainStrike: 0, distancePct: 0, painByStrike: [] },
+  smile: { smileData: [], atmIV: 0, skew: 0, otmCallIV: 0, otmPutIV: 0 },
+  nearExpiries: [],
   signals: [],
-  capital: 5000,
+  capital: 10000,
+  dteRange: "auto",
   lastUpdated: null,
   loading: false,
-  error: null,
-  expiries: [],
 
   setAsset: (asset) => {
-    set({ asset, options: [], closes: [], signals: [], spot: 0 });
-    get().fetchData();
+    set({ asset, options: [], closes: [], signals: [], spot: 0, error: null });
   },
 
-  setSpot: (spot) => set({ spot }),
+  setSpot: (spot) => {
+    set({ spot });
+    const s = get();
+    if (s.options.length > 0) s.updateMarketData();
+  },
+
+  setOptions: (options) => {
+    set({ options });
+    get().updateMarketData();
+  },
+
+  setCloses: (closes) => {
+    const rsi14 = calcRSI(closes, 14);
+    const ema9 = calcEMA(closes, 9);
+    const ema21 = calcEMA(closes, 21);
+    const ema55 = calcEMA(closes, 55);
+    const trend = detectTrend(ema9, ema21, ema55);
+    const cross = detectCross(closes);
+    set({ closes, rsi14, ema9, ema21, ema55, trend, cross });
+    get().runEngine();
+  },
+
   setConnected: (connected) => set({ connected }),
+  setLoading: (loading) => set({ loading }),
+  setError: (error) => set({ error }),
+
   setCapital: (capital) => {
     set({ capital });
-    get().runSignals();
+    get().runEngine();
   },
 
-  fetchData: async () => {
-    const { asset } = get();
-    set({ loading: true, error: null });
-
-    try {
-      const [options, closes] = await Promise.all([
-        fetchOptionChain(asset),
-        fetchCandles(`${asset}-PERPETUAL`, 14),
-      ]);
-
-      const spot = get().spot || (closes.length > 0 ? closes[closes.length - 1] : 0);
-
-      // Calculate indicators
-      const rsi14 = calcRSI(closes, 14);
-      const ema9 = calcEMA(closes, 9);
-      const ema21 = calcEMA(closes, 21);
-      const ema55 = calcEMA(closes, 55);
-      const trend = detectTrend(ema9, ema21, ema55);
-
-      // Options analytics
-      const pcr = calcPCR(options);
-      const maxPain = calcMaxPain(options, spot);
-
-      // Get unique expiries
-      const expiries = [...new Set(options.map((o) => o.expiry))].sort();
-      const nearestExpiry = expiries[0] || "";
-      const smile = calcVolSmile(options, nearestExpiry, spot);
-
-      set({
-        options, closes, rsi14, ema9, ema21, ema55, trend,
-        pcr, maxPain, smile, expiries, loading: false, lastUpdated: new Date(),
-      });
-
-      get().runSignals();
-    } catch (e: any) {
-      set({ loading: false, error: e.message || "Error fetching data" });
-    }
+  setDteRange: (dteRange) => {
+    set({ dteRange });
+    get().runEngine();
   },
 
-  runSignals: () => {
+  updateMarketData: () => {
     const s = get();
-    if (s.options.length === 0 || s.spot === 0) return;
+    if (s.options.length === 0 || s.spot <= 0) return;
+
+    const pcr = calcPCR(s.options);
+    const maxPain = calcMaxPain(s.options, s.spot);
+    const nearExpiries = getNearestExpiries(s.options, 3);
+    const smile = nearExpiries.length > 0
+      ? calcVolSmile(s.options, nearExpiries[0], s.spot)
+      : { smileData: [], atmIV: 0, skew: 0, otmCallIV: 0, otmPutIV: 0 };
+
+    set({ pcr, maxPain, smile, nearExpiries, lastUpdated: new Date() });
+    s.runEngine();
+  },
+
+  runEngine: () => {
+    const s = get();
+    if (s.options.length === 0 || s.spot <= 0) return;
 
     const signals = runEngine({
       spot: s.spot,
@@ -126,6 +137,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
       skew: s.smile.skew,
       options: s.options,
       capital: s.capital,
+      dteRange: s.dteRange,
     });
 
     set({ signals });

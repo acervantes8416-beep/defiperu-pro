@@ -1,15 +1,17 @@
 /**
- * Decision Engine: genera señales de trading de opciones
- * basadas en indicadores técnicos + datos de opciones.
+ * Decision Engine — generates 3 options trading signals based on TA + options data.
  */
-import { calcGreeks } from "./blackScholes";
-import type { OptionContract } from "./maxPain";
+import { calcGreeks, calcTimeToExpiryGate, calcDTEGate } from "./blackScholes";
+import type { OptionContract } from "./gateio";
+
+export type DTERange = "1d" | "3d" | "5d" | "7d" | "14d" | "30d" | "auto";
 
 export interface Signal {
   action: "BUY CALL" | "BUY PUT" | "SELL CALL" | "SELL PUT";
   instrument: string;
   strike: number;
   expiry: string;
+  expiryRaw: string;
   dte: number;
   entryUSD: number;
   breakeven: number;
@@ -23,6 +25,7 @@ export interface Signal {
   keyRisks: string[];
   timeframe: string;
   strength: number;
+  contracts: number;
 }
 
 interface EngineInput {
@@ -36,42 +39,32 @@ interface EngineInput {
   skew: number;
   options: OptionContract[];
   capital: number;
+  dteRange: DTERange;
 }
 
-/** Parse expiry string like "25APR25" to DTE */
-function parseDTE(expiry: string): number {
-  const months: Record<string, number> = {
-    JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5,
-    JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11,
-  };
-  const day = parseInt(expiry.slice(0, 2));
-  const monthStr = expiry.slice(2, 5);
-  const year = 2000 + parseInt(expiry.slice(5, 7));
-  const month = months[monthStr];
-  if (isNaN(day) || month === undefined || isNaN(year)) return 0;
-  const expiryDate = new Date(Date.UTC(year, month, day, 8, 0, 0)); // Deribit expires 8:00 UTC
-  return Math.max(0, Math.floor((expiryDate.getTime() - Date.now()) / 86400000));
-}
+// DTE filter configs
+const DTE_CONFIGS: Record<DTERange, { minOI: number; maxSpread: number; minDTE: number; maxDTE: number }> = {
+  "1d":   { minOI: 10,  maxSpread: 30, minDTE: 0,  maxDTE: 2 },
+  "3d":   { minOI: 10,  maxSpread: 25, minDTE: 1,  maxDTE: 4 },
+  "5d":   { minOI: 20,  maxSpread: 20, minDTE: 3,  maxDTE: 7 },
+  "7d":   { minOI: 30,  maxSpread: 20, minDTE: 5,  maxDTE: 10 },
+  "14d":  { minOI: 50,  maxSpread: 15, minDTE: 10, maxDTE: 17 },
+  "30d":  { minOI: 50,  maxSpread: 15, minDTE: 20, maxDTE: 35 },
+  "auto": { minOI: 50,  maxSpread: 20, minDTE: 3,  maxDTE: 45 },
+};
 
 export function runEngine(input: EngineInput): Signal[] {
-  const { spot, rsi, ema9, ema21, ema55, pcrOI, maxPainStrike, skew, options, capital } = input;
+  const { spot, rsi, ema9, ema21, ema55, pcrOI, maxPainStrike, skew, options, capital, dteRange } = input;
+  if (spot <= 0 || options.length === 0) return [];
 
-  // ── Score CALL vs PUT ──
-  let callScore = 0;
-  let putScore = 0;
-
-  if (rsi !== null) {
-    if (rsi < 35) callScore += 20;
-    if (rsi > 65) putScore += 20;
-  }
-  if (ema9 !== null && ema21 !== null) {
-    if (ema9 > ema21) callScore += 20;
-    if (ema9 < ema21) putScore += 20;
-  }
-  if (ema21 !== null && ema55 !== null) {
-    if (ema21 > ema55) callScore += 15;
-    if (ema21 < ema55) putScore += 15;
-  }
+  // Scoring
+  let callScore = 0, putScore = 0;
+  if (rsi != null && rsi < 35) callScore += 20;
+  if (rsi != null && rsi > 65) putScore += 20;
+  if (ema9 != null && ema21 != null && ema9 > ema21) callScore += 20;
+  if (ema9 != null && ema21 != null && ema9 < ema21) putScore += 20;
+  if (ema21 != null && ema55 != null && ema21 > ema55) callScore += 15;
+  if (ema21 != null && ema55 != null && ema21 < ema55) putScore += 15;
   if (pcrOI > 1.1) callScore += 20;
   if (pcrOI < 0.8) putScore += 20;
   if (spot < maxPainStrike) callScore += 15;
@@ -79,134 +72,140 @@ export function runEngine(input: EngineInput): Signal[] {
   if (skew > 5) callScore += 10;
   if (skew < -5) putScore += 10;
 
-  // ── Filter valid contracts ──
-  const validOptions = options.filter((o) => {
-    const dte = parseDTE(o.expiry);
-    if (dte < 10 || dte > 35) return false;
-    if (o.open_interest < 100) return false;
-    const spread = o.ask_price - o.bid_price;
-    if (o.mark_price > 0 && spread / o.mark_price > 0.15) return false;
-    return true;
+  const cfg = DTE_CONFIGS[dteRange];
+
+  // Filter valid contracts
+  const valid = options.filter((o) => {
+    const dte = calcDTEGate(o.expiryRaw);
+    return dte >= cfg.minDTE && dte <= cfg.maxDTE
+      && o.openInterest >= cfg.minOI
+      && o.spreadPct <= cfg.maxSpread;
   });
 
-  // ── Select best contracts ──
-  function selectBest(type: "C" | "P", score: number): Signal | null {
-    const contracts = validOptions.filter((o) => o.type === type);
-    if (contracts.length === 0) return null;
+  function selectBest(type: "C" | "P", score: number, targetDelta: number): Signal | null {
+    const pool = valid.filter((o) => o.type === type && o.markPrice > 0);
+    if (pool.length === 0) return null;
 
-    // Calcular delta para cada contrato y filtrar delta 0.25-0.45
-    const withGreeks = contracts.map((o) => {
-      const dte = parseDTE(o.expiry);
-      const T = dte / 365;
-      const g = calcGreeks(spot, o.strike, T, o.mark_iv / 100, type);
-      return { ...o, dte, T, greeks: g, absDelta: Math.abs(g.delta) };
-    }).filter((o) => o.absDelta >= 0.2 && o.absDelta <= 0.5);
+    // Compute delta for each contract
+    const withDelta = pool.map((o) => {
+      const dte = calcDTEGate(o.expiryRaw);
+      const T = calcTimeToExpiryGate(o.expiryRaw);
+      // Use native delta if available, else BS
+      let delta = o.delta;
+      let bsGreeks = calcGreeks(spot, o.strike, T, o.markIV / 100, type);
+      if (delta == null) delta = bsGreeks.delta;
+      return { ...o, dte, T, delta: delta!, absDelta: Math.abs(delta!), bsGreeks };
+    }).filter((o) => o.absDelta >= 0.15 && o.absDelta <= 0.55);
 
-    if (withGreeks.length === 0) return null;
+    if (withDelta.length === 0) return null;
 
-    // Target delta ~0.35, prefer highest OI
-    withGreeks.sort((a, b) => {
-      const deltaScore = Math.abs(a.absDelta - 0.35) - Math.abs(b.absDelta - 0.35);
-      if (Math.abs(deltaScore) > 0.05) return deltaScore;
-      return b.open_interest - a.open_interest;
+    // Sort by proximity to target delta, then OI
+    const absTgt = Math.abs(targetDelta);
+    withDelta.sort((a, b) => {
+      const dd = Math.abs(a.absDelta - absTgt) - Math.abs(b.absDelta - absTgt);
+      if (Math.abs(dd) > 0.03) return dd;
+      return b.openInterest - a.openInterest;
     });
 
-    const best = withGreeks[0];
-    const entryUSD = best.mark_price * spot;
+    const best = withDelta[0];
+    const entryUSD = best.markPrice;
     const breakeven = type === "C" ? best.strike + entryUSD : best.strike - entryUSD;
 
-    // Target yield: subyacente mueve 8% en dirección favorable
+    // Target yield: 8% move in favorable direction
     const moveSpot = spot * (type === "C" ? 1.08 : 0.92);
-    const exitGreeks = calcGreeks(moveSpot, best.strike, Math.max(0, best.T - 7 / 365), best.mark_iv / 100, type);
+    const exitT = Math.max(0, best.T - 7 / 365);
+    const exitGreeks = calcGreeks(moveSpot, best.strike, exitT, best.markIV / 100, type);
     const targetPct = entryUSD > 0 ? ((exitGreeks.price - entryUSD) / entryUSD * 100) : 0;
 
-    // Contracts suggested: 2% of capital
+    // Contracts: 2% of capital
     const maxRisk = capital * 0.02;
-    const suggestedContracts = Math.max(0.1, Math.min(10, Math.floor((maxRisk / entryUSD) * 10) / 10));
+    const contracts = Math.max(0.1, Math.min(10, Math.floor((maxRisk / entryUSD) * 10) / 10));
 
-    const action = score > 50 ? (type === "C" ? "BUY CALL" : "BUY PUT") : (type === "C" ? "SELL PUT" : "SELL CALL");
-    const riskLevel = score > 70 ? "LOW" : score > 40 ? "MEDIUM" : "HIGH";
-    const confidence = score > 70 ? "HIGH" : score > 40 ? "MEDIUM" : "LOW";
+    const isBuy = score > 40;
+    const action: Signal["action"] = isBuy
+      ? (type === "C" ? "BUY CALL" : "BUY PUT")
+      : (type === "C" ? "SELL CALL" : "SELL PUT");
 
-    const rationale = buildRationale(type, rsi, ema9, ema21, pcrOI, maxPainStrike, spot, skew);
+    const riskLevel: Signal["riskLevel"] = score > 70 ? "LOW" : score > 40 ? "MEDIUM" : "HIGH";
+    const confidence: Signal["confidence"] = score > 70 ? "HIGH" : score > 40 ? "MEDIUM" : "LOW";
+
+    const g = best.bsGreeks;
+    const nativeDelta = best.delta ?? g.delta;
+    const nativeGamma = best.gamma ?? g.gamma;
+    const nativeTheta = best.theta ?? g.theta;
+    const nativeVega = best.vega ?? g.vega;
 
     return {
-      action: action as Signal["action"],
-      instrument: best.instrument_name,
+      action,
+      instrument: best.instrumentName,
       strike: best.strike,
       expiry: best.expiry,
+      expiryRaw: best.expiryRaw,
       dte: best.dte,
       entryUSD: Math.round(entryUSD * 100) / 100,
-      breakeven: Math.round(breakeven),
-      targetYield: `+${Math.round(targetPct)}%`,
-      maxLoss: action.startsWith("BUY") ? `$${Math.round(entryUSD * suggestedContracts)} prima pagada` : "Ilimitada (venta)",
-      maxGain: action.includes("CALL") && action.startsWith("BUY") ? "Ilimitado > breakeven" : `$${Math.round(entryUSD * suggestedContracts)} prima cobrada`,
+      breakeven: Math.round(breakeven * 100) / 100,
+      targetYield: `+${Math.round(Math.max(0, targetPct))}%`,
+      maxLoss: isBuy ? `$${Math.round(entryUSD * contracts)} (prima)` : `Ilimitada`,
+      maxGain: isBuy ? (type === "C" ? "Ilimitado" : `$${Math.round((best.strike - entryUSD) * contracts)}`) : `$${Math.round(entryUSD * contracts)} (prima)`,
       greeks: {
-        delta: Math.round(best.greeks.delta * 1000) / 1000,
-        gamma: Math.round(best.greeks.gamma * 1000000) / 1000000,
-        theta: Math.round(best.greeks.theta * 100) / 100,
-        vega: Math.round(best.greeks.vega * 100) / 100,
-        iv: best.mark_iv,
+        delta: Math.round(nativeDelta * 1000) / 1000,
+        gamma: Math.round(nativeGamma * 1e6) / 1e6,
+        theta: Math.round(nativeTheta * 100) / 100,
+        vega: Math.round(nativeVega * 100) / 100,
+        iv: best.markIV,
       },
-      rationale,
+      rationale: buildRationale(type, rsi, ema9, ema21, pcrOI, maxPainStrike, spot, skew),
       riskLevel,
       confidence,
-      keyRisks: [
-        "Theta decay (pérdida de valor temporal)",
-        "IV crush post-evento",
-        "Gap de precio nocturno",
-      ],
-      timeframe: `${best.dte} días`,
+      keyRisks: ["Theta decay", "IV crush post-evento", "Gap de precio"],
+      timeframe: `${best.dte}d`,
       strength: score,
+      contracts,
     };
   }
 
   const signals: Signal[] = [];
+  const callSig = selectBest("C", callScore, 0.35);
+  if (callSig) signals.push(callSig);
 
-  const callSignal = selectBest("C", callScore);
-  if (callSignal) signals.push(callSignal);
+  const putSig = selectBest("P", putScore, -0.35);
+  if (putSig) signals.push(putSig);
 
-  const putSignal = selectBest("P", putScore);
-  if (putSignal) signals.push(putSignal);
-
-  // Mixed signal: la más fuerte entre SELL opciones
-  if (callScore > putScore && putScore > 30) {
-    const sellPut = selectBest("P", putScore);
-    if (sellPut) {
-      sellPut.action = "SELL PUT";
-      sellPut.rationale = "Venta de put — cobrar prima esperando que el subyacente no baje del strike. " + sellPut.rationale;
-      signals.push(sellPut);
+  // Mixed: dominant type, different delta
+  const domType = callScore >= putScore ? "C" : "P";
+  const domScore = Math.max(callScore, putScore);
+  const mixedSig = selectBest(domType as "C" | "P", domScore, domType === "C" ? 0.28 : -0.28);
+  if (mixedSig) {
+    if (domScore <= 40) {
+      mixedSig.action = domType === "C" ? "SELL PUT" : "SELL CALL";
+      mixedSig.rationale = `Venta de ${domType === "C" ? "put" : "call"} — cobrar prima. ` + mixedSig.rationale;
     }
-  } else if (putScore > callScore && callScore > 30) {
-    const sellCall = selectBest("C", callScore);
-    if (sellCall) {
-      sellCall.action = "SELL CALL";
-      sellCall.rationale = "Venta de call — cobrar prima esperando que el subyacente no suba del strike. " + sellCall.rationale;
-      signals.push(sellCall);
-    }
+    signals.push(mixedSig);
   }
 
-  // Asegurar exactamente 3 señales (rellenar o recortar)
+  // Ensure exactly 3
   while (signals.length < 3 && signals.length > 0) {
-    signals.push({ ...signals[signals.length - 1], strength: signals[signals.length - 1].strength - 10 });
+    const last = signals[signals.length - 1];
+    signals.push({ ...last, strength: last.strength - 10, instrument: last.instrument + "*" });
   }
 
   return signals.slice(0, 3).sort((a, b) => b.strength - a.strength);
 }
 
 function buildRationale(type: "C" | "P", rsi: number | null, ema9: number | null, ema21: number | null, pcr: number, mp: number, spot: number, skew: number): string {
-  const parts: string[] = [];
+  const p: string[] = [];
   if (type === "C") {
-    if (rsi !== null && rsi < 40) parts.push(`RSI en ${rsi.toFixed(0)} (zona de sobreventa)`);
-    if (ema9 && ema21 && ema9 > ema21) parts.push("EMA9 cruzó EMA21 al alza (momentum positivo)");
-    if (pcr > 1.1) parts.push(`PCR ${pcr.toFixed(2)} (exceso de puts — posible rebote)`);
-    if (spot < mp) parts.push(`Spot por debajo del Max Pain $${mp.toLocaleString()}`);
-    if (skew > 3) parts.push(`Skew +${skew.toFixed(1)} (puts caros, oportunidad en calls)`);
+    if (rsi != null && rsi < 40) p.push(`RSI ${rsi.toFixed(0)} — zona de sobreventa`);
+    if (ema9 && ema21 && ema9 > ema21) p.push("EMA9 > EMA21 — momentum alcista");
+    if (pcr > 1.1) p.push(`PCR ${pcr.toFixed(2)} — exceso de puts`);
+    if (spot < mp) p.push(`Spot bajo Max Pain $${mp.toLocaleString()}`);
+    if (skew > 3) p.push(`Skew +${skew.toFixed(1)} — puts caros`);
   } else {
-    if (rsi !== null && rsi > 60) parts.push(`RSI en ${rsi.toFixed(0)} (zona de sobrecompra)`);
-    if (ema9 && ema21 && ema9 < ema21) parts.push("EMA9 cruzó EMA21 a la baja (momentum negativo)");
-    if (pcr < 0.8) parts.push(`PCR ${pcr.toFixed(2)} (exceso de calls — posible caída)`);
-    if (spot > mp) parts.push(`Spot por encima del Max Pain $${mp.toLocaleString()}`);
+    if (rsi != null && rsi > 60) p.push(`RSI ${rsi.toFixed(0)} — zona de sobrecompra`);
+    if (ema9 && ema21 && ema9 < ema21) p.push("EMA9 < EMA21 — momentum bajista");
+    if (pcr < 0.8) p.push(`PCR ${pcr.toFixed(2)} — exceso de calls`);
+    if (spot > mp) p.push(`Spot sobre Max Pain $${mp.toLocaleString()}`);
+    if (skew < -3) p.push(`Skew ${skew.toFixed(1)} — calls caros`);
   }
-  return parts.join(". ") + ".";
+  return p.length > 0 ? p.join(". ") + "." : "Análisis basado en múltiples indicadores.";
 }
