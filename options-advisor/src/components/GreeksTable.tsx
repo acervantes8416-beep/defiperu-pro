@@ -4,13 +4,22 @@ import { calcGreeks, calcTimeToExpiryGate, calcDTEGate } from "@/lib/blackSchole
 export default function GreeksTable() {
   const { options, spot } = useMarketStore();
 
-  const nearATM = options
+  // Relaxed filter: OI >= 0, IV >= 0, DTE 0-90, within 15% of spot
+  let nearATM = options
     .filter((o) => {
+      if (spot <= 0) return false;
       const dte = calcDTEGate(o.expiryRaw);
-      return dte <= 60 && dte >= 0 && o.openInterest > 5 && Math.abs(o.strike - spot) / spot < 0.15;
+      return dte <= 90 && dte >= 0 && o.markIV >= 0 && Math.abs(o.strike - spot) / spot < 0.15;
     })
     .sort((a, b) => b.openInterest - a.openInterest)
     .slice(0, 10);
+
+  // Fallback: if less than 3 contracts after filter, show ALL sorted by proximity to spot
+  if (nearATM.length < 3 && options.length > 0 && spot > 0) {
+    nearATM = [...options]
+      .sort((a, b) => Math.abs(a.strike - spot) - Math.abs(b.strike - spot))
+      .slice(0, 10);
+  }
 
   return (
     <div className="bg-bg-surface border border-gray-800 rounded-xl overflow-hidden">

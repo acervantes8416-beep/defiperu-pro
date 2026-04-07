@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef } from "react";
 import { useMarketStore } from "@/store/marketStore";
 import { useGateIO } from "@/hooks/useGateIO";
 import AssetSelector from "@/components/AssetSelector";
@@ -22,6 +23,27 @@ const DTE_OPTS: { label: string; value: DTERange }[] = [
 export default function App() {
   useGateIO();
   const store = useMarketStore();
+
+  // Banner: only show after 5s of being disconnected
+  const [showBanner, setShowBanner] = useState(false);
+  const disconnectedSince = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (store.connected) {
+      disconnectedSince.current = null;
+      setShowBanner(false);
+    } else {
+      if (!disconnectedSince.current) {
+        disconnectedSince.current = Date.now();
+      }
+      const timer = setTimeout(() => {
+        if (disconnectedSince.current && Date.now() - disconnectedSince.current >= 5000) {
+          setShowBanner(true);
+        }
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [store.connected]);
   const riskPerOp = Math.round(store.capital * 0.02);
 
   return (
@@ -81,10 +103,10 @@ export default function App() {
         </div>
       </header>
 
-      {/* ── WS Error banner ── */}
-      {!store.connected && store.error && (
+      {/* ── WS Error banner — only after 5s disconnected ── */}
+      {showBanner && (
         <div className="bg-accent-yellow/10 border-b border-accent-yellow/30 px-4 py-1.5 text-center text-accent-yellow text-xs font-mono">
-          {store.error} — Reconnecting...
+          {store.error || "WebSocket desconectado"} — Reconnecting...
         </div>
       )}
 

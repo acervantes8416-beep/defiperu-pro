@@ -62,14 +62,12 @@ export function useGateIO() {
 
     loadData();
 
-    // 4. Spot REST polling every 10s (fallback if WS slow)
+    // 4. Spot REST polling every 8s — always runs as backup for WS
     spotPollRef.current = setInterval(() => {
-      if (useMarketStore.getState().spot === 0) {
-        fetchSpotPrice(asset)
-          .then((p) => { if (p > 0) useMarketStore.getState().setSpot(p); })
-          .catch(() => {});
-      }
-    }, 10000);
+      fetchSpotPrice(asset)
+        .then((p) => { if (p > 0) useMarketStore.getState().setSpot(p); })
+        .catch(() => {});
+    }, 8000);
 
     // 5. Refresh chain every 5 min
     chainPollRef.current = setInterval(loadData, 300000);
